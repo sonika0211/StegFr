@@ -90,7 +90,7 @@ export function StegFrApp() {
         </div>
 
         <footer className="mt-12 border-t border-border/40 pt-6 text-center text-[11px] uppercase tracking-[0.25em] text-muted-foreground">
-          StegFr · STEGANOGRAPHY FOR REAL · Built in-browser with AES-GCM + ROI-guided LSB
+          STEGFR · STEGANOGRAPHY FOR REAL
         </footer>
       </div>
     </div>
