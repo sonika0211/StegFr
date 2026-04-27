@@ -19,13 +19,13 @@ export function StegFrApp() {
       <div
         aria-hidden
         className="pointer-events-none fixed -top-40 left-1/4 h-[500px] w-[500px] rounded-full opacity-30 blur-3xl animate-float-orb"
-        style={{ background: "radial-gradient(circle, hsl(185 100% 50% / 0.5), transparent 70%)" }}
+        style={{ background: "radial-gradient(circle, hsl(0 0% 100% / 0.15), transparent 70%)" }}
       />
       <div
         aria-hidden
         className="pointer-events-none fixed -bottom-40 right-1/4 h-[500px] w-[500px] rounded-full opacity-30 blur-3xl animate-float-orb"
         style={{
-          background: "radial-gradient(circle, hsl(210 100% 55% / 0.5), transparent 70%)",
+          background: "radial-gradient(circle, hsl(0 0% 100% / 0.12), transparent 70%)",
           animationDelay: "-7s",
         }}
       />
