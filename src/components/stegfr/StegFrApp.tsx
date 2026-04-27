@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import TextScramble from "./TextScramble";
 import EncryptTab from "./EncryptTab";
 import DecryptTab from "./DecryptTab";
+import { BackgroundPaths } from "@/components/ui/background-paths";
 
 type Tab = "encrypt" | "decrypt";
 
@@ -14,6 +15,7 @@ export function StegFrApp() {
     <div className="relative min-h-screen overflow-hidden">
       {/* ambient bg */}
       <div aria-hidden className="pointer-events-none fixed inset-0 grid-bg opacity-30" />
+      <BackgroundPaths />
       <div
         aria-hidden
         className="pointer-events-none fixed -top-40 left-1/4 h-[500px] w-[500px] rounded-full opacity-30 blur-3xl animate-float-orb"
@@ -23,7 +25,7 @@ export function StegFrApp() {
         aria-hidden
         className="pointer-events-none fixed -bottom-40 right-1/4 h-[500px] w-[500px] rounded-full opacity-30 blur-3xl animate-float-orb"
         style={{
-          background: "radial-gradient(circle, hsl(295 100% 55% / 0.5), transparent 70%)",
+          background: "radial-gradient(circle, hsl(210 100% 55% / 0.5), transparent 70%)",
           animationDelay: "-7s",
         }}
       />
