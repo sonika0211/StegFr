@@ -65,12 +65,12 @@ export function SignInPage({ onEnter }: Props) {
               <Sparkles className="h-4 w-4" /> Enter StegFr
             </ShinyButton>
             <ShinyButton size="lg" variant="ghost" className="flex-1" onClick={onEnter}>
-              Skip to Demo
+              Start Right Away
             </ShinyButton>
           </div>
 
           <p className="text-center text-[11px] text-muted-foreground">
-            No accounts. No data ever leaves your device.
+            StegFr
           </p>
         </div>
       </GlowCard>
