@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Lock, Sparkles, ShieldCheck } from "lucide-react";
+import { Lock, ShieldCheck } from "lucide-react";
 import GlowCard from "./GlowCard";
 import ShinyButton from "./ShinyButton";
 import TextScramble from "./TextScramble";
