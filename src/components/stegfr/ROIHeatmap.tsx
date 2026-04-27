@@ -7,13 +7,13 @@ interface Props {
 
 /** Map value 0..1 to a color: blue/purple → poor, yellow/red → great. */
 function colorFor(v: number): [number, number, number] {
-  // Custom 5-stop gradient: indigo → purple → red → orange → yellow
+  // Vibrant blue scale: dark navy → deep blue → vibrant blue → bright cyan → electric blue
   const stops: [number, [number, number, number]][] = [
-    [0.0, [40, 20, 110]],
-    [0.25, [120, 30, 180]],
-    [0.5, [220, 40, 90]],
-    [0.75, [255, 130, 30]],
-    [1.0, [255, 230, 60]],
+    [0.0, [10, 10, 42]],     // #0a0a2a dark navy
+    [0.25, [26, 58, 106]],   // #1a3a6a deep blue
+    [0.5, [42, 106, 218]],   // #2a6ada vibrant blue
+    [0.75, [0, 200, 255]],   // #00c8ff bright cyan
+    [1.0, [0, 240, 255]],    // #00f0ff electric blue
   ];
   for (let i = 0; i < stops.length - 1; i++) {
     const [a, ca] = stops[i];
@@ -68,7 +68,7 @@ export function ROIHeatmap({ roi, size = 256 }: Props) {
           className="h-2 flex-1 mx-3 rounded-full"
           style={{
             background:
-              "linear-gradient(90deg, rgb(40,20,110), rgb(120,30,180), rgb(220,40,90), rgb(255,130,30), rgb(255,230,60))",
+              "linear-gradient(90deg, #0a0a2a, #1a3a6a, #2a6ada, #00c8ff, #00f0ff)",
           }}
         />
         <span>Great</span>
