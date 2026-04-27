@@ -14,7 +14,7 @@ export function StegFrApp() {
   return (
     <div className="relative min-h-screen overflow-hidden">
       {/* ambient bg */}
-      <div aria-hidden className="pointer-events-none fixed inset-0 grid-bg opacity-30" />
+      <div aria-hidden className="pointer-events-none fixed inset-0 grid-bg opacity-20" />
       <BackgroundPaths />
       <div
         aria-hidden

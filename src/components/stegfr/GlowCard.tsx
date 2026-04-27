@@ -35,12 +35,12 @@ function CardPaths({ position }: { position: number }) {
           key={p.id}
           d={p.d}
           stroke="currentColor"
-          strokeWidth={p.width}
-          strokeOpacity={0.08 + p.id * 0.015}
-          initial={{ pathLength: 0.3, opacity: 0.4 }}
+          strokeWidth={p.width + 0.3}
+          strokeOpacity={0.2 + p.id * 0.025}
+          initial={{ pathLength: 0.3, opacity: 0.6 }}
           animate={{
             pathLength: 1,
-            opacity: [0.2, 0.5, 0.2],
+            opacity: [0.45, 0.85, 0.45],
             pathOffset: [0, 1, 0],
           }}
           transition={{
@@ -67,7 +67,7 @@ export function GlowCard({ children, className }: Props) {
       )}
     >
       <div className="relative h-full w-full overflow-hidden rounded-2xl glass">
-        <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden opacity-40">
+        <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden opacity-70">
           <CardPaths position={1} />
           <CardPaths position={-1} />
         </div>

@@ -244,7 +244,7 @@ export function EncryptTab() {
       {/* ============ OUTPUT ============ */}
       <GlowCard glowColor="hsl(270 100% 70% / 0.35)">
         <div className="space-y-5 p-6">
-          <header className="flex items-center gap-2 text-[hsl(270_100%_75%)]">
+          <header className="flex items-center gap-2 text-foreground">
             <Sparkles className="h-4 w-4" />
             <h2 className="font-display text-sm uppercase tracking-[0.25em]">Output</h2>
           </header>
