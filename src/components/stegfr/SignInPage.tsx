@@ -23,14 +23,14 @@ export function SignInPage({ onEnter }: Props) {
       <GlowCard className="relative z-10 w-full max-w-md animate-fade-in-up">
         <div className="space-y-6 p-8 sm:p-10">
           <div className="flex items-center gap-3 text-xs uppercase tracking-[0.3em] text-primary/80">
-            <ShieldCheck className="h-4 w-4" /> Steganography Frontier
+            <ShieldCheck className="h-4 w-4" /> STEGANOGRAPHY FOR REAL
           </div>
           <div>
             <h1 className="font-display text-5xl font-bold leading-none">
               <TextScramble text="StegFr" className="text-gradient" />
             </h1>
             <p className="mt-3 text-sm text-muted-foreground">
-              Hide. Encrypt. Protect. Conceal AES-encrypted payloads inside the noisiest regions of any image — entirely in your browser.
+              Hide. Encrypt. Protect. 
             </p>
           </div>
 
@@ -50,7 +50,7 @@ export function SignInPage({ onEnter }: Props) {
 
           <div className="flex flex-col gap-3 sm:flex-row">
             <ShinyButton size="lg" className="flex-1" onClick={onEnter}>
-              Enter StegFr
+              create
             </ShinyButton>
             <ShinyButton size="lg" variant="ghost" className="flex-1" onClick={onEnter}>
               Start Right Away
