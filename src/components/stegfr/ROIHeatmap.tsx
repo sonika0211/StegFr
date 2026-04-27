@@ -49,7 +49,6 @@ export function ROIHeatmap({ roi, size = 256 }: Props) {
         img.data[i] = r;
         img.data[i + 1] = g;
         img.data[i + 2] = b;
-        img.data[i + 3] 255;
         img.data[i + 3] = 255;
       }
     }
