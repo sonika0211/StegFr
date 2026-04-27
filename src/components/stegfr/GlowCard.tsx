@@ -1,56 +1,76 @@
-import { useRef, MouseEvent, ReactNode } from "react";
+import { ReactNode } from "react";
+import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 
 interface Props {
   children: ReactNode;
   className?: string;
-  /** css color for the spotlight */
+  /** kept for backwards-compat; no longer used */
   glowColor?: string;
-  /** width of edge gradient ring */
   intensity?: number;
 }
 
-/**
- * Spotlight glow card. Tracks mouse and renders a soft radial highlight
- * plus an animated gradient border. Pure presentation.
- */
-export function GlowCard({
-  children,
-  className,
-  glowColor = "hsl(185 100% 60% / 0.35)",
-  intensity = 1,
-}: Props) {
-  const ref = useRef<HTMLDivElement>(null);
-
-  const handleMove = (e: MouseEvent<HTMLDivElement>) => {
-    const el = ref.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    el.style.setProperty("--mx", `${e.clientX - rect.left}px`);
-    el.style.setProperty("--my", `${e.clientY - rect.top}px`);
-  };
+function CardPaths({ position }: { position: number }) {
+  const paths = Array.from({ length: 18 }, (_, i) => ({
+    id: i,
+    d: `M-${380 - i * 5 * position} -${189 + i * 6}C-${
+      380 - i * 5 * position
+    } -${189 + i * 6} -${312 - i * 5 * position} ${216 - i * 6} ${
+      152 - i * 5 * position
+    } ${343 - i * 6}C${616 - i * 5 * position} ${470 - i * 6} ${
+      684 - i * 5 * position
+    } ${875 - i * 6} ${684 - i * 5 * position} ${875 - i * 6}`,
+    width: 0.4 + i * 0.03,
+  }));
 
   return (
-    <div
-      ref={ref}
-      onMouseMove={handleMove}
-      className={cn(
-        "group relative rounded-2xl p-[1px] shadow-card transition-all duration-300",
-        "bg-[linear-gradient(135deg,hsl(var(--primary)/0.6),hsl(var(--secondary)/0.6),hsl(var(--primary)/0.6))]",
-        "hover:shadow-neon",
-        className,
-      )}
-      style={{ ["--glow" as string]: glowColor }}
+    <svg
+      className="absolute inset-0 h-full w-full text-primary"
+      viewBox="0 0 696 316"
+      fill="none"
+      preserveAspectRatio="xMidYMid slice"
     >
-      <div className="relative h-full w-full overflow-hidden rounded-2xl glass">
-        {/* spotlight */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100"
-          style={{
-            background: `radial-gradient(${300 * intensity}px circle at var(--mx,50%) var(--my,50%), var(--glow), transparent 60%)`,
+      {paths.map((p) => (
+        <motion.path
+          key={p.id}
+          d={p.d}
+          stroke="currentColor"
+          strokeWidth={p.width}
+          strokeOpacity={0.08 + p.id * 0.015}
+          initial={{ pathLength: 0.3, opacity: 0.4 }}
+          animate={{
+            pathLength: 1,
+            opacity: [0.2, 0.5, 0.2],
+            pathOffset: [0, 1, 0],
+          }}
+          transition={{
+            duration: 22 + Math.random() * 10,
+            repeat: Number.POSITIVE_INFINITY,
+            ease: "linear",
           }}
         />
+      ))}
+    </svg>
+  );
+}
+
+/**
+ * Card with animated white background paths. No cursor-follow glow.
+ */
+export function GlowCard({ children, className }: Props) {
+  return (
+    <div
+      className={cn(
+        "group relative rounded-2xl p-[1px] shadow-card transition-all duration-300",
+        "bg-[linear-gradient(135deg,hsl(var(--border)/0.6),hsl(var(--border)/0.2),hsl(var(--border)/0.6))]",
+        className,
+      )}
+    >
+      <div className="relative h-full w-full overflow-hidden rounded-2xl glass">
+        <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden opacity-40">
+          <CardPaths position={1} />
+          <CardPaths position={-1} />
+        </div>
         <div className="relative">{children}</div>
       </div>
     </div>
