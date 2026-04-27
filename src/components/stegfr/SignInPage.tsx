@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Lock, Sparkles, ShieldCheck } from "lucide-react";
+import { Lock, ShieldCheck } from "lucide-react";
 import GlowCard from "./GlowCard";
 import ShinyButton from "./ShinyButton";
 import TextScramble from "./TextScramble";
+import { BackgroundPaths } from "@/components/ui/background-paths";
 
 interface Props {
   onEnter: () => void;
@@ -16,23 +17,10 @@ export function SignInPage({ onEnter }: Props) {
 
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-10">
-      {/* floating orbs */}
-      <div aria-hidden className="pointer-events-none absolute inset-0 grid-bg opacity-40" />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -top-20 -left-20 h-[400px] w-[400px] rounded-full opacity-40 blur-3xl animate-float-orb"
-        style={{ background: "radial-gradient(circle, hsl(185 100% 50% / 0.6), transparent 70%)" }}
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -bottom-20 -right-20 h-[420px] w-[420px] rounded-full opacity-40 blur-3xl animate-float-orb"
-        style={{
-          background: "radial-gradient(circle, hsl(295 100% 55% / 0.6), transparent 70%)",
-          animationDelay: "-6s",
-        }}
-      />
+      {/* full-screen animated paths on pure black */}
+      <BackgroundPaths />
 
-      <GlowCard className="w-full max-w-md animate-fade-in-up">
+      <GlowCard className="relative z-10 w-full max-w-md animate-fade-in-up">
         <div className="space-y-6 p-8 sm:p-10">
           <div className="flex items-center gap-3 text-xs uppercase tracking-[0.3em] text-primary/80">
             <ShieldCheck className="h-4 w-4" /> Steganography Frontier
@@ -62,7 +50,7 @@ export function SignInPage({ onEnter }: Props) {
 
           <div className="flex flex-col gap-3 sm:flex-row">
             <ShinyButton size="lg" className="flex-1" onClick={onEnter}>
-              <Sparkles className="h-4 w-4" /> Enter StegFr
+              Enter StegFr
             </ShinyButton>
             <ShinyButton size="lg" variant="ghost" className="flex-1" onClick={onEnter}>
               Start Right Away
