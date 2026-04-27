@@ -9,9 +9,15 @@ const enc = new TextEncoder();
 const dec = new TextDecoder();
 
 async function deriveKey(password: string, salt: Uint8Array) {
-  const baseKey = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveKey"]);
+  const baseKey = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(password) as BufferSource,
+    "PBKDF2",
+    false,
+    ["deriveKey"],
+  );
   return crypto.subtle.deriveKey(
-    { name: "PBKDF2", salt, iterations: 200_000, hash: "SHA-256" },
+    { name: "PBKDF2", salt: salt as BufferSource, iterations: 200_000, hash: "SHA-256" },
     baseKey,
     { name: "AES-GCM", length: 256 },
     false,
@@ -23,7 +29,13 @@ export async function encryptMessage(message: string, password: string): Promise
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const key = await deriveKey(password, salt);
-  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, enc.encode(message)));
+  const ct = new Uint8Array(
+    await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv: iv as BufferSource },
+      key,
+      enc.encode(message) as BufferSource,
+    ),
+  );
 
   const body = new Uint8Array(salt.length + iv.length + ct.length);
   body.set(salt, 0);
@@ -45,7 +57,11 @@ export async function decryptMessage(payload: Uint8Array, password: string): Pro
   const iv = body.subarray(16, 28);
   const ct = body.subarray(28);
   const key = await deriveKey(password, salt);
-  const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ct);
+  const pt = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: iv as BufferSource },
+    key,
+    ct as BufferSource,
+  );
   return dec.decode(pt);
 }
 
