@@ -1,15 +1,18 @@
 import { useState } from "react";
-import { Lock, Unlock, ShieldCheck, Github } from "lucide-react";
+import { Lock, Unlock, ShieldCheck, Github, MessageSquare, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import TextScramble from "./TextScramble";
 import EncryptTab from "./EncryptTab";
 import DecryptTab from "./DecryptTab";
+import ChatTab from "./ChatTab";
 import { BackgroundPaths } from "@/components/ui/background-paths";
+import { useAuth } from "@/hooks/useAuth";
 
-type Tab = "encrypt" | "decrypt";
+type Tab = "encrypt" | "decrypt" | "chat";
 
 export function StegFrApp() {
   const [tab, setTab] = useState<Tab>("encrypt");
+  const { user, signOut } = useAuth();
 
   return (
     <div className="relative min-h-screen overflow-hidden">
@@ -52,6 +55,11 @@ export function StegFrApp() {
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[hsl(145_90%_55%)]" />
               Engine online · runs locally
             </span>
+            {user && (
+              <span className="hidden items-center gap-1.5 rounded-full border border-border/60 bg-card/40 px-3 py-1.5 sm:inline-flex">
+                {user.email}
+              </span>
+            )}
             <a
               href="https://en.wikipedia.org/wiki/Steganography"
               target="_blank"
@@ -60,6 +68,12 @@ export function StegFrApp() {
             >
               <Github className="h-3.5 w-3.5" /> About
             </a>
+            <button
+              onClick={signOut}
+              className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-card/40 px-3 py-1.5 hover:text-primary"
+            >
+              <LogOut className="h-3.5 w-3.5" /> Sign out
+            </button>
           </nav>
         </header>
 
@@ -68,6 +82,7 @@ export function StegFrApp() {
           {([
             { id: "encrypt" as const, icon: Lock, label: "Encrypt" },
             { id: "decrypt" as const, icon: Unlock, label: "Decrypt" },
+            { id: "chat" as const, icon: MessageSquare, label: "Chat" },
           ]).map(({ id, icon: Icon, label }) => (
             <button
               key={id}
@@ -86,7 +101,7 @@ export function StegFrApp() {
         </div>
 
         <div key={tab} className="animate-fade-in-up">
-          {tab === "encrypt" ? <EncryptTab /> : <DecryptTab />}
+          {tab === "encrypt" ? <EncryptTab /> : tab === "decrypt" ? <DecryptTab /> : <ChatTab />}
         </div>
 
         <footer className="mt-12 border-t border-border/40 pt-6 text-center text-[11px] uppercase tracking-[0.25em] text-muted-foreground">
