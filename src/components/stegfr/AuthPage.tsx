@@ -10,7 +10,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { lovable } from "@/integrations/lovable/index";
 
 const emailSchema = z.string().trim().email("Invalid email").max(255);
-const pwSchema = z.string().min(6, "Min 6 chars").max(128);
+const pwSchema = z.string().min(1, "Password required");
 const usernameSchema = z
   .string()
   .trim()
