@@ -138,7 +138,7 @@ export function DecryptTab({ preload, onPreloadConsumed }: DecryptTabProps = {})
 
           <ShinyButton onClick={onExtract} disabled={!imgData || !password || busy} className="w-full">
             <KeyRound className="h-4 w-4" />
-            {busy ? "Extracting…" : "🔑 Extract Message"}
+            {busy ? "Extracting…" : "Extract Message"}
           </ShinyButton>
 
           {message && (
