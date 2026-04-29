@@ -260,7 +260,7 @@ export function EncryptTab() {
             className="w-full"
           >
             <Lock className="h-4 w-4" />
-            {embedding ? "Embedding…" : "🔐 Hide & Encrypt"}
+            {embedding ? "Embedding…" : "Hide & Encrypt"}
           </ShinyButton>
 
           {result && stegoUrl && imgUrl ? (
