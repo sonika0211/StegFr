@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, Cell } from "recharts";
-import { Download, Eye, KeyRound, Lock, ScanSearch, Sparkles } from "lucide-react";
+import { Download, Eye, KeyRound, Lock, ScanSearch, Send, Sparkles } from "lucide-react";
 import GlowCard from "./GlowCard";
 import ShinyButton from "./ShinyButton";
 import ImageDrop from "./ImageDrop";
 import ROIHeatmap from "./ROIHeatmap";
 import MetricCard from "./MetricCard";
+import SendToChatDialog from "./SendToChatDialog";
 import {
   AnalysisResult,
   analyzeImage,
@@ -29,6 +30,8 @@ export function EncryptTab() {
   const [embedding, setEmbedding] = useState(false);
   const [result, setResult] = useState<EmbedResult | null>(null);
   const [stegoUrl, setStegoUrl] = useState<string | null>(null);
+  const [sendOpen, setSendOpen] = useState(false);
+  const [stegoBlob, setStegoBlob] = useState<Blob | null>(null);
 
   const reset = () => {
     setImgUrl(null);
@@ -36,6 +39,7 @@ export function EncryptTab() {
     setAnalysis(null);
     setResult(null);
     setStegoUrl(null);
+    setStegoBlob(null);
   };
 
   const handleImage = async (_file: File, dataUrl: string) => {
@@ -81,6 +85,7 @@ export function EncryptTab() {
       const r = embed(imgData, payload, action);
       setResult(r);
       setStegoUrl(imageDataToPngDataUrl(r.stego));
+      setStegoBlob(await imageDataToPngBlob(r.stego));
       toast.success(`Hidden ✓  PSNR ${r.psnr.toFixed(2)} dB`);
     } catch (e) {
       toast.error((e as Error).message);
@@ -304,9 +309,14 @@ export function EncryptTab() {
                 </ResponsiveContainer>
               </div>
 
-              <ShinyButton onClick={onDownload} className="w-full" variant="ghost">
-                <Download className="h-4 w-4" /> ⬇️ Download Stego Image
-              </ShinyButton>
+              <div className="grid grid-cols-2 gap-2">
+                <ShinyButton onClick={onDownload} className="w-full" variant="ghost">
+                  <Download className="h-4 w-4" /> Download
+                </ShinyButton>
+                <ShinyButton onClick={() => setSendOpen(true)} className="w-full" disabled={!stegoBlob}>
+                  <Send className="h-4 w-4" /> Send to chat
+                </ShinyButton>
+              </div>
             </>
           ) : (
             <div className="flex h-64 items-center justify-center rounded-lg border border-dashed border-border/60 text-xs text-muted-foreground">
@@ -315,6 +325,12 @@ export function EncryptTab() {
           )}
         </div>
       </GlowCard>
+
+      <SendToChatDialog
+        open={sendOpen}
+        onOpenChange={setSendOpen}
+        imageBlob={stegoBlob}
+      />
     </div>
   );
 }
