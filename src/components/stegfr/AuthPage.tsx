@@ -51,14 +51,13 @@ export default function AuthPage() {
         let loginEmail = id;
         // If not an email, treat as username and look up email
         if (!id.includes("@")) {
-          const { data, error: lookupErr } = await supabase
-            .from("profiles")
-            .select("email")
-            .eq("username", id.toLowerCase())
-            .maybeSingle();
+          const { data, error: lookupErr } = await supabase.rpc(
+            "get_email_for_username",
+            { _username: id.toLowerCase() },
+          );
           if (lookupErr) throw lookupErr;
-          if (!data?.email) throw new Error("No account found for that username");
-          loginEmail = data.email;
+          if (!data) throw new Error("No account found for that username");
+          loginEmail = data as string;
         }
         const { error } = await supabase.auth.signInWithPassword({
           email: loginEmail,
