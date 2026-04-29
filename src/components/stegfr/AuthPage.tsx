@@ -51,7 +51,7 @@ export default function AuthPage() {
         let loginEmail = id;
         // If not an email, treat as username and look up email
         if (!id.includes("@")) {
-          const { data, error: lookupErr } = await supabase.rpc(
+          const { data, error: lookupErr } = await (supabase.rpc as any)(
             "get_email_for_username",
             { _username: id.toLowerCase() },
           );
