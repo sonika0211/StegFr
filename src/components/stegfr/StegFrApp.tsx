@@ -12,6 +12,7 @@ type Tab = "encrypt" | "decrypt" | "chat";
 
 export function StegFrApp() {
   const [tab, setTab] = useState<Tab>("encrypt");
+  const [decryptPreload, setDecryptPreload] = useState<{ url: string; name: string } | null>(null);
   const { user, signOut } = useAuth();
 
   return (
@@ -101,7 +102,21 @@ export function StegFrApp() {
         </div>
 
         <div key={tab} className="animate-fade-in-up">
-          {tab === "encrypt" ? <EncryptTab /> : tab === "decrypt" ? <DecryptTab /> : <ChatTab />}
+          {tab === "encrypt" ? (
+            <EncryptTab />
+          ) : tab === "decrypt" ? (
+            <DecryptTab
+              preload={decryptPreload}
+              onPreloadConsumed={() => setDecryptPreload(null)}
+            />
+          ) : (
+            <ChatTab
+              onDecryptImage={(url, name) => {
+                setDecryptPreload({ url, name });
+                setTab("decrypt");
+              }}
+            />
+          )}
         </div>
 
         <footer className="mt-12 border-t border-border/40 pt-6 text-center text-[11px] uppercase tracking-[0.25em] text-muted-foreground">

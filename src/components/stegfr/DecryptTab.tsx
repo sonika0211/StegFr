@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { CheckCircle2, KeyRound, Unlock, XCircle } from "lucide-react";
 import GlowCard from "./GlowCard";
@@ -8,13 +8,49 @@ import { dataUrlToImageData } from "@/lib/stego/imageUtils";
 import { extract } from "@/lib/stego/embed";
 import { decryptMessage } from "@/lib/stego/crypto";
 
-export function DecryptTab() {
+interface DecryptTabProps {
+  preload?: { url: string; name: string } | null;
+  onPreloadConsumed?: () => void;
+}
+
+export function DecryptTab({ preload, onPreloadConsumed }: DecryptTabProps = {}) {
   const [imgUrl, setImgUrl] = useState<string | null>(null);
   const [imgData, setImgData] = useState<ImageData | null>(null);
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Accept image pasted from Chat tab
+  useEffect(() => {
+    if (!preload?.url) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(preload.url);
+        const blob = await res.blob();
+        const dataUrl: string = await new Promise((resolve, reject) => {
+          const fr = new FileReader();
+          fr.onload = () => resolve(fr.result as string);
+          fr.onerror = reject;
+          fr.readAsDataURL(blob);
+        });
+        if (cancelled) return;
+        setImgUrl(dataUrl);
+        setMessage(null);
+        setError(null);
+        setImgData(await dataUrlToImageData(dataUrl));
+        toast.success("Image loaded from chat");
+      } catch (e) {
+        toast.error("Could not load image from chat");
+      } finally {
+        onPreloadConsumed?.();
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [preload, onPreloadConsumed]);
 
   const handleImage = async (_f: File, dataUrl: string) => {
     setImgUrl(dataUrl);

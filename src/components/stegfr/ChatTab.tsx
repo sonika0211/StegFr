@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Download, MessageSquare, Search, Send, UserPlus } from "lucide-react";
+import { Download, KeyRound, MessageSquare, Search, Send, UserPlus } from "lucide-react";
 import GlowCard from "./GlowCard";
 import ShinyButton from "./ShinyButton";
 import { useAuth } from "@/hooks/useAuth";
@@ -20,7 +20,11 @@ interface ConvWithPeer extends Conversation {
   peer?: Profile;
 }
 
-export default function ChatTab() {
+interface ChatTabProps {
+  onDecryptImage?: (url: string, name: string) => void;
+}
+
+export default function ChatTab({ onDecryptImage }: ChatTabProps = {}) {
   const { user } = useAuth();
   const [conversations, setConversations] = useState<ConvWithPeer[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -213,12 +217,30 @@ export default function ChatTab() {
   const active = useMemo(() => conversations.find((c) => c.id === activeId), [conversations, activeId]);
 
   const downloadImage = async (path: string) => {
-    const url = imgUrls[path] ?? (await getSignedImageUrl(path));
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "stegfr-stego.png";
-    a.target = "_blank";
-    a.click();
+    try {
+      const url = imgUrls[path] ?? (await getSignedImageUrl(path));
+      const res = await fetch(url);
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objectUrl;
+      a.download = "stegfr-stego.png";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    } catch {
+      toast.error("Download failed");
+    }
+  };
+
+  const decryptImage = async (path: string) => {
+    try {
+      const url = imgUrls[path] ?? (await getSignedImageUrl(path));
+      onDecryptImage?.(url, "stegfr-stego.png");
+    } catch {
+      toast.error("Could not load image");
+    }
   };
 
   return (
@@ -348,17 +370,27 @@ export default function ChatTab() {
                         ) : (
                           <div className="h-24 w-48 animate-pulse rounded-lg bg-muted/30" />
                         )}
-                        <button
-                          onClick={() => downloadImage(m.image_path!)}
-                          className={cn(
-                            "inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium transition",
-                            mine
-                              ? "bg-black/30 hover:bg-black/40"
-                              : "border border-border hover:bg-accent",
+                        <div className="flex flex-wrap gap-1.5">
+                          <button
+                            onClick={() => downloadImage(m.image_path!)}
+                            className={cn(
+                              "inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium transition",
+                              mine
+                                ? "bg-black/30 hover:bg-black/40"
+                                : "border border-border hover:bg-accent",
+                            )}
+                          >
+                            <Download className="h-3 w-3" /> Download
+                          </button>
+                          {!mine && (
+                            <button
+                              onClick={() => decryptImage(m.image_path!)}
+                              className="inline-flex items-center gap-1.5 rounded-md border border-primary/60 bg-primary/10 px-2 py-1 text-[11px] font-medium text-primary transition hover:bg-primary/20"
+                            >
+                              <KeyRound className="h-3 w-3" /> Decrypt
+                            </button>
                           )}
-                        >
-                          <Download className="h-3 w-3" /> Download stego
-                        </button>
+                        </div>
                         {m.image_kind && (
                           <p className="text-[10px] uppercase tracking-widest opacity-70">
                             {m.image_kind}
