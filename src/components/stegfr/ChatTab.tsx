@@ -370,17 +370,27 @@ export default function ChatTab({ onDecryptImage }: ChatTabProps = {}) {
                         ) : (
                           <div className="h-24 w-48 animate-pulse rounded-lg bg-muted/30" />
                         )}
-                        <button
-                          onClick={() => downloadImage(m.image_path!)}
-                          className={cn(
-                            "inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium transition",
-                            mine
-                              ? "bg-black/30 hover:bg-black/40"
-                              : "border border-border hover:bg-accent",
+                        <div className="flex flex-wrap gap-1.5">
+                          <button
+                            onClick={() => downloadImage(m.image_path!)}
+                            className={cn(
+                              "inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium transition",
+                              mine
+                                ? "bg-black/30 hover:bg-black/40"
+                                : "border border-border hover:bg-accent",
+                            )}
+                          >
+                            <Download className="h-3 w-3" /> Download
+                          </button>
+                          {!mine && (
+                            <button
+                              onClick={() => decryptImage(m.image_path!)}
+                              className="inline-flex items-center gap-1.5 rounded-md border border-primary/60 bg-primary/10 px-2 py-1 text-[11px] font-medium text-primary transition hover:bg-primary/20"
+                            >
+                              <KeyRound className="h-3 w-3" /> Decrypt
+                            </button>
                           )}
-                        >
-                          <Download className="h-3 w-3" /> Download stego
-                        </button>
+                        </div>
                         {m.image_kind && (
                           <p className="text-[10px] uppercase tracking-widest opacity-70">
                             {m.image_kind}
