@@ -199,16 +199,16 @@ export function extract(img: ImageData, priority: Priority): Uint8Array {
 }
 
 /**
- * Tiny RL-style policy: pick the (density, priority) action expected to maximise
- * reward given the current state. Uses a deterministic heuristic seeded by the
- * image stats so behavior is reproducible — acts as a learned policy snapshot.
+ * Heuristic fallback policy. The real action is chosen by the Q-learning
+ * agent in `qlearn.ts`, which actually learns from PSNR rewards across
+ * embeds and is persisted in Lovable Cloud. This function is kept ONLY as
+ * a cold-start prior in case the Q-table query fails.
  */
 export function chooseAction(analysis: AnalysisResult, msgLength: number): EmbedOptions {
   const noiseBin = analysis.laplacianVariance > 800 ? 2 : analysis.laplacianVariance > 300 ? 1 : 0;
   const textureBin = analysis.complexityScore > 60 ? 2 : analysis.complexityScore > 30 ? 1 : 0;
   const lenBin = msgLength > 500 ? 2 : msgLength > 100 ? 1 : 0;
 
-  // Q-table (hand-tuned to behave like a converged policy)
   const density: Density = lenBin === 2 ? "high" : lenBin === 1 ? "medium" : "low";
   let priority: Priority = "mixed";
   if (noiseBin === 2 && textureBin >= 1) priority = "texture";
