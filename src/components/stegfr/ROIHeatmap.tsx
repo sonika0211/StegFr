@@ -2,7 +2,11 @@ import { useEffect, useRef } from "react";
 
 interface Props {
   roi: number[][];
+  /** Max display width in CSS pixels (height follows the image's aspect ratio). */
   size?: number;
+  /** Original image dimensions — heatmap is rendered at this aspect ratio (mini version of the image). */
+  imageWidth?: number;
+  imageHeight?: number;
 }
 
 /** Map value 0..1 to a color: blue/purple → poor, yellow/red → great. */
@@ -30,8 +34,11 @@ function colorFor(v: number): [number, number, number] {
   return stops[stops.length - 1][1];
 }
 
-/** 32x32 ROI heatmap. */
-export function ROIHeatmap({ roi, size = 256 }: Props) {
+/**
+ * 32x32 ROI rendered as a "mini version of the image": the heatmap canvas is
+ * stretched to the same aspect ratio as the source image (no cropping).
+ */
+export function ROIHeatmap({ roi, size = 256, imageWidth, imageHeight }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -55,11 +62,25 @@ export function ROIHeatmap({ roi, size = 256 }: Props) {
     ctx.putImageData(img, 0, 0);
   }, [roi]);
 
+  // Compute display dimensions matching the original image's aspect ratio.
+  let dispW = size;
+  let dispH = size;
+  if (imageWidth && imageHeight && imageWidth > 0 && imageHeight > 0) {
+    const ar = imageWidth / imageHeight;
+    if (ar >= 1) {
+      dispW = size;
+      dispH = Math.round(size / ar);
+    } else {
+      dispH = size;
+      dispW = Math.round(size * ar);
+    }
+  }
+
   return (
     <div className="space-y-2">
       <canvas
         ref={ref}
-        style={{ width: size, height: size, imageRendering: "pixelated" }}
+        style={{ width: dispW, height: dispH, imageRendering: "pixelated" }}
         className="rounded-lg ring-1 ring-primary/40 shadow-neon"
       />
       <div className="flex items-center justify-between text-[10px] uppercase tracking-widest text-muted-foreground">

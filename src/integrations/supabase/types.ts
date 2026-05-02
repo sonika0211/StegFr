@@ -100,12 +100,38 @@ export type Database = {
         }
         Relationships: []
       }
+      qtable: {
+        Row: {
+          action_key: string
+          id: string
+          q_value: number
+          state_key: string
+          updated_at: string
+          visits: number
+        }
+        Insert: {
+          action_key: string
+          id?: string
+          q_value?: number
+          state_key: string
+          updated_at?: string
+          visits?: number
+        }
+        Update: {
+          action_key?: string
+          id?: string
+          q_value?: number
+          state_key?: string
+          updated_at?: string
+          visits?: number
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      get_email_for_username: { Args: { _username: string }; Returns: string }
       is_conversation_participant: {
         Args: { _conv: string; _user: string }
         Returns: boolean
