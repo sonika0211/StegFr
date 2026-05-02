@@ -25,6 +25,18 @@ export interface AnalysisResult {
 
 const ROI_GRID = 32;
 
+/** Replace the heuristic ROI in an existing AnalysisResult with a CNN-predicted one. */
+export function withRoi(base: AnalysisResult, roi: number[][]): AnalysisResult {
+  // recompute capacity using the new ROI
+  const flat = roi.flat().sort((a, b) => b - a);
+  const cutoff = flat[Math.floor(flat.length * 0.5)] || 0;
+  let usableBlocks = 0;
+  for (let y = 0; y < ROI_GRID; y++) for (let x = 0; x < ROI_GRID; x++) if (roi[y][x] >= cutoff) usableBlocks++;
+  const pixelsPerBlock = (base.width / ROI_GRID) * (base.height / ROI_GRID);
+  const capacityBits = Math.floor(usableBlocks * pixelsPerBlock * 3);
+  return { ...base, roi, capacityBits };
+}
+
 function toGray(data: Uint8ClampedArray, w: number, h: number): Float32Array {
   const g = new Float32Array(w * h);
   for (let i = 0, j = 0; i < data.length; i += 4, j++) {
