@@ -11,9 +11,19 @@ import SendToChatDialog from "./SendToChatDialog";
 import {
   AnalysisResult,
   analyzeImage,
+  withRoi,
 } from "@/lib/stego/analysis";
 import { encryptMessage } from "@/lib/stego/crypto";
-import { chooseAction, embed, EmbedResult } from "@/lib/stego/embed";
+import { embed, EmbedResult, chooseAction } from "@/lib/stego/embed";
+import { predictRoi } from "@/lib/stego/cnn";
+import {
+  chooseQAction,
+  discretise,
+  rewardFromPsnr,
+  updateQ,
+  QState,
+  QAction,
+} from "@/lib/stego/qlearn";
 import {
   dataUrlToImageData,
   imageDataToPngBlob,
@@ -26,9 +36,11 @@ export function EncryptTab() {
   const [message, setMessage] = useState("");
   const [password, setPassword] = useState("");
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
+  const [cnnConfidence, setCnnConfidence] = useState<number | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [embedding, setEmbedding] = useState(false);
   const [result, setResult] = useState<EmbedResult | null>(null);
+  const [qInfo, setQInfo] = useState<{ qBefore: number; qAfter: number; reward: number; explored: boolean } | null>(null);
   const [stegoUrl, setStegoUrl] = useState<string | null>(null);
   const [sendOpen, setSendOpen] = useState(false);
   const [stegoBlob, setStegoBlob] = useState<Blob | null>(null);
@@ -37,7 +49,9 @@ export function EncryptTab() {
     setImgUrl(null);
     setImgData(null);
     setAnalysis(null);
+    setCnnConfidence(null);
     setResult(null);
+    setQInfo(null);
     setStegoUrl(null);
     setStegoBlob(null);
   };
@@ -49,21 +63,29 @@ export function EncryptTab() {
     setImgData(data);
   };
 
-  const onAnalyze = () => {
+  const onAnalyze = async () => {
     if (!imgData) {
       toast.error("Upload an image first");
       return;
     }
     setAnalyzing(true);
-    // Defer to next tick for spinner visibility
-    setTimeout(() => {
-      const a = analyzeImage(imgData);
-      setAnalysis(a);
-      setAnalyzing(false);
-      if (a.verdict === "REJECTED") toast.error("Image rejected — see analysis");
-      else if (a.verdict === "WARNING") toast.warning("Image accepted with caution");
+    try {
+      // Heuristic metrics + verdict (rejection rules still apply)
+      const base = analyzeImage(imgData);
+      // CNN ROI prediction (TF.js, in-browser)
+      const cnn = await predictRoi(imgData);
+      // Replace the heuristic ROI with the CNN one for embedding & display
+      const merged = withRoi(base, cnn.roi);
+      setAnalysis(merged);
+      setCnnConfidence(cnn.confidence);
+      if (merged.verdict === "REJECTED") toast.error("Image rejected — see analysis");
+      else if (merged.verdict === "WARNING") toast.warning("Image accepted with caution");
       else toast.success("Image accepted as a strong carrier");
-    }, 50);
+    } catch (e) {
+      toast.error("Analysis failed: " + (e as Error).message);
+    } finally {
+      setAnalyzing(false);
+    }
   };
 
   const onEmbed = async () => {
@@ -71,9 +93,14 @@ export function EncryptTab() {
     if (!message) return toast.error("Enter a secret message");
     if (password.length < 4) return toast.error("Password must be at least 4 chars");
     let a = analysis;
+    let conf = cnnConfidence;
     if (!a) {
-      a = analyzeImage(imgData);
+      const base = analyzeImage(imgData);
+      const cnn = await predictRoi(imgData);
+      a = withRoi(base, cnn.roi);
+      conf = cnn.confidence;
       setAnalysis(a);
+      setCnnConfidence(conf);
     }
     if (a.verdict === "REJECTED") {
       return toast.error("Rejected image cannot be used. Pick a more textured one.");
@@ -81,11 +108,33 @@ export function EncryptTab() {
     setEmbedding(true);
     try {
       const payload = await encryptMessage(message, password);
-      const action = chooseAction(a, message.length);
-      const r = embed(imgData, payload, action);
+
+      // Q-learning: discretise → choose ε-greedy action from persisted Q-table
+      const state: QState = discretise(a.laplacianVariance, a.edgeDensityPct, conf ?? 0, message.length);
+      let qChoice: { action: QAction; qValue: number; explored: boolean };
+      try {
+        const c = await chooseQAction(state, message.length);
+        qChoice = { action: c.action, qValue: c.qValue, explored: c.explored };
+      } catch {
+        const fallback = chooseAction(a, message.length);
+        qChoice = { action: fallback as QAction, qValue: 0, explored: false };
+      }
+
+      const r = embed(imgData, payload, qChoice.action);
       setResult(r);
       setStegoUrl(imageDataToPngDataUrl(r.stego));
       setStegoBlob(await imageDataToPngBlob(r.stego));
+
+      // Reward from PSNR & persist Q-update
+      const reward = rewardFromPsnr(r.psnr);
+      let qAfter = qChoice.qValue;
+      try {
+        qAfter = await updateQ(state, qChoice.action, reward, qChoice.qValue);
+      } catch {
+        /* offline / unauth — non-fatal */
+      }
+      setQInfo({ qBefore: qChoice.qValue, qAfter, reward, explored: qChoice.explored });
+
       toast.success(`Hidden ✓  PSNR ${r.psnr.toFixed(2)} dB`);
     } catch (e) {
       toast.error((e as Error).message);
@@ -196,12 +245,12 @@ export function EncryptTab() {
 
           <ShinyButton onClick={onAnalyze} disabled={!imgData || analyzing} className="w-full">
             <Eye className="h-4 w-4" />
-            {analyzing ? "Analyzing…" : "🔍 Analyze Image"}
+            {analyzing ? "Analyzing…" : "Analyze Image"}
           </ShinyButton>
 
           {analysis ? (
             <>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 <MetricCard
                   label="Texture"
                   value={analysis.textureScore.toFixed(0)}
@@ -220,13 +269,24 @@ export function EncryptTab() {
                   unit="/100"
                   accent="purple"
                 />
+                <MetricCard
+                  label="CNN Conf."
+                  value={(cnnConfidence ?? 0).toFixed(0)}
+                  unit="/100"
+                  accent="cyan"
+                />
               </div>
 
               <div>
                 <p className="mb-2 text-[11px] uppercase tracking-widest text-muted-foreground">
-                  ROI Heatmap · 32×32
+                  ROI Heatmap · CNN · {imgData?.width}×{imgData?.height}
                 </p>
-                <ROIHeatmap roi={analysis.roi} size={260} />
+                <ROIHeatmap
+                  roi={analysis.roi}
+                  size={260}
+                  imageWidth={imgData?.width}
+                  imageHeight={imgData?.height}
+                />
               </div>
 
               <ul className="space-y-1 rounded-lg border border-border/60 bg-card/40 p-3 text-xs text-muted-foreground">
@@ -278,10 +338,26 @@ export function EncryptTab() {
 
               <div className="grid grid-cols-2 gap-2">
                 <MetricCard label="PSNR" value={result.psnr.toFixed(2)} unit="dB" accent="cyan" big />
-                <MetricCard label="RL Reward" value={result.rlReward >= 0 ? `+${result.rlReward}` : result.rlReward} accent="magenta" big />
+                <MetricCard
+                  label="RL Reward"
+                  value={qInfo ? (qInfo.reward >= 0 ? `+${qInfo.reward}` : qInfo.reward) : (result.rlReward >= 0 ? `+${result.rlReward}` : result.rlReward)}
+                  accent="magenta"
+                  big
+                />
                 <MetricCard label="Density" value={(result.densityUsed * 100).toFixed(2)} unit="%" accent="purple" />
                 <MetricCard label="Priority" value={result.priorityUsed} accent="cyan" />
               </div>
+
+              {qInfo && (
+                <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 text-[11px] font-mono text-muted-foreground">
+                  <p className="mb-1 uppercase tracking-widest text-primary">Q-learning update</p>
+                  <p>
+                    Q(s,a): {qInfo.qBefore.toFixed(3)} → <span className="text-foreground">{qInfo.qAfter.toFixed(3)}</span>
+                    {"  "}·{"  "}
+                    {qInfo.explored ? "explored (ε-greedy)" : "exploited best"}
+                  </p>
+                </div>
+              )}
 
               <div className="rounded-lg border border-border/60 bg-card/40 p-3">
                 <p className="mb-1 text-[10px] uppercase tracking-widest text-muted-foreground">
