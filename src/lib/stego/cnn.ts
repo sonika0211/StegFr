@@ -171,22 +171,25 @@ export async function predictRoi(img: ImageData): Promise<CnnRoiResult> {
     const out = model.predict(input) as tf.Tensor;
     const arr = out.dataSync();
 
-    let mean = 0, max = 0, min = 1;
+    let mean = 0, max = 0;
     for (let i = 0; i < arr.length; i++) {
       mean += arr[i];
       if (arr[i] > max) max = arr[i];
-      if (arr[i] < min) min = arr[i];
     }
     mean /= arr.length;
 
-    const range = Math.max(1e-6, max - min);
+    // Absolute scaling (NOT min-max). A flat image yields tiny activations
+    // everywhere → stays black. Only real edge/texture evidence lights up.
+    // sigmoid baseline ≈ 0.17 → subtract baseline, then scale.
+    const BASELINE = 0.17;
+    const SCALE = 2.2;
     const roi: number[][] = [];
     for (let y = 0; y < SIZE; y++) {
       const row: number[] = [];
       for (let x = 0; x < SIZE; x++) {
-        // Gentle gamma to spread mid-tones and improve visual accuracy
-        const v = (arr[y * SIZE + x] - min) / range;
-        row.push(Math.pow(v, 0.85));
+        const raw = arr[y * SIZE + x];
+        const v = Math.max(0, Math.min(1, (raw - BASELINE) * SCALE));
+        row.push(v);
       }
       roi.push(row);
     }
