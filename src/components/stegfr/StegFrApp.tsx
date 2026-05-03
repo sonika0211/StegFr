@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Lock, Unlock, ShieldCheck, Github, MessageSquare, LogOut } from "lucide-react";
+import { Lock, Unlock, ShieldCheck, MessageSquare, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import TextScramble from "./TextScramble";
 import EncryptTab from "./EncryptTab";
@@ -52,23 +52,11 @@ export function StegFrApp() {
           </div>
 
           <nav className="flex items-center gap-3 text-xs text-muted-foreground">
-            <span className="hidden items-center gap-1.5 rounded-full border border-border/60 bg-card/40 px-3 py-1.5 sm:inline-flex">
-              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[hsl(145_90%_55%)]" />
-              Engine online · runs locally
-            </span>
             {user && (
               <span className="hidden items-center gap-1.5 rounded-full border border-border/60 bg-card/40 px-3 py-1.5 sm:inline-flex">
                 {user.email}
               </span>
             )}
-            <a
-              href="https://en.wikipedia.org/wiki/Steganography"
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-card/40 px-3 py-1.5 hover:text-primary"
-            >
-              <Github className="h-3.5 w-3.5" /> About
-            </a>
             <button
               onClick={signOut}
               className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-card/40 px-3 py-1.5 hover:text-primary"

@@ -9,29 +9,10 @@ interface Props {
   imageHeight?: number;
 }
 
-/** Map value 0..1 to a color: blue/purple → poor, yellow/red → great. */
+/** Greyscale: 0 = black (poor), 0.5 = grey (near-good), 1 = white (great). */
 function colorFor(v: number): [number, number, number] {
-  // Vibrant blue scale: dark navy → deep blue → vibrant blue → bright cyan → electric blue
-  const stops: [number, [number, number, number]][] = [
-    [0.0, [10, 10, 42]],     // #0a0a2a dark navy
-    [0.25, [26, 58, 106]],   // #1a3a6a deep blue
-    [0.5, [42, 106, 218]],   // #2a6ada vibrant blue
-    [0.75, [0, 200, 255]],   // #00c8ff bright cyan
-    [1.0, [0, 240, 255]],    // #00f0ff electric blue
-  ];
-  for (let i = 0; i < stops.length - 1; i++) {
-    const [a, ca] = stops[i];
-    const [b, cb] = stops[i + 1];
-    if (v <= b) {
-      const t = (v - a) / (b - a || 1);
-      return [
-        ca[0] + (cb[0] - ca[0]) * t,
-        ca[1] + (cb[1] - ca[1]) * t,
-        ca[2] + (cb[2] - ca[2]) * t,
-      ];
-    }
-  }
-  return stops[stops.length - 1][1];
+  const c = Math.round(Math.max(0, Math.min(1, v)) * 255);
+  return [c, c, c];
 }
 
 /**
@@ -86,11 +67,8 @@ export function ROIHeatmap({ roi, size = 256, imageWidth, imageHeight }: Props) 
       <div className="flex items-center justify-between text-[10px] uppercase tracking-widest text-muted-foreground">
         <span>Poor</span>
         <div
-          className="h-2 flex-1 mx-3 rounded-full"
-          style={{
-            background:
-              "linear-gradient(90deg, #0a0a2a, #1a3a6a, #2a6ada, #00c8ff, #00f0ff)",
-          }}
+          className="h-2 flex-1 mx-3 rounded-full ring-1 ring-border"
+          style={{ background: "linear-gradient(90deg, #000, #808080, #fff)" }}
         />
         <span>Great</span>
       </div>
