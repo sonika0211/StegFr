@@ -70,16 +70,12 @@ export function EncryptTab() {
     }
     setAnalyzing(true);
     try {
-      // Heuristic metrics + verdict (rejection rules still apply)
       const base = analyzeImage(imgData);
-      // CNN ROI prediction (TF.js, in-browser)
       const cnn = await predictRoi(imgData);
-      // Replace the heuristic ROI with the CNN one for embedding & display
       const merged = withRoi(base, cnn.roi);
       setAnalysis(merged);
       setCnnConfidence(cnn.confidence);
-      if (merged.verdict === "REJECTED") toast.error("Image rejected — see analysis");
-      else if (merged.verdict === "WARNING") toast.warning("Image accepted with caution");
+      if (merged.verdict === "WARNING") toast.warning("Proceed with caution — image is not ideal");
       else toast.success("Image accepted as a strong carrier");
     } catch (e) {
       toast.error("Analysis failed: " + (e as Error).message);
@@ -101,9 +97,6 @@ export function EncryptTab() {
       conf = cnn.confidence;
       setAnalysis(a);
       setCnnConfidence(conf);
-    }
-    if (a.verdict === "REJECTED") {
-      return toast.error("Rejected image cannot be used. Pick a more textured one.");
     }
     setEmbedding(true);
     try {
@@ -269,12 +262,6 @@ export function EncryptTab() {
                   unit="/100"
                   accent="purple"
                 />
-                <MetricCard
-                  label="CNN Conf."
-                  value={(cnnConfidence ?? 0).toFixed(0)}
-                  unit="/100"
-                  accent="cyan"
-                />
               </div>
 
               <div>
@@ -325,17 +312,6 @@ export function EncryptTab() {
 
           {result && stegoUrl && imgUrl ? (
             <>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Original</p>
-                  <img src={imgUrl} alt="original" className="h-[120px] w-full rounded-lg object-cover ring-1 ring-border" />
-                </div>
-                <div className="space-y-1">
-                  <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Stego</p>
-                  <img src={stegoUrl} alt="stego" className="h-[120px] w-full rounded-lg object-cover ring-1 ring-primary/60" />
-                </div>
-              </div>
-
               <div className="grid grid-cols-2 gap-2">
                 <MetricCard label="PSNR" value={result.psnr.toFixed(2)} unit="dB" accent="cyan" big />
                 <MetricCard

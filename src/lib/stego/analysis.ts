@@ -174,8 +174,10 @@ export function analyzeImage(img: ImageData): AnalysisResult {
   if (avgBlockVariance < 50) reasons.push(`Average block variance ${avgBlockVariance.toFixed(1)} < 50 — flat regions dominate.`);
 
   let verdict: AnalysisResult["verdict"] = "ACCEPTED";
-  if (reasons.length > 0) verdict = "REJECTED";
-  else if (lapVar < 400 || edgePct < 6 || avgBlockVariance < 150) {
+  if (reasons.length > 0) {
+    verdict = "WARNING";
+    reasons.push("Image is not ideal — proceed with caution. Quality may be lower.");
+  } else if (lapVar < 400 || edgePct < 6 || avgBlockVariance < 150) {
     verdict = "WARNING";
     reasons.push("Image is acceptable but borderline — payload size should be conservative.");
   } else {
