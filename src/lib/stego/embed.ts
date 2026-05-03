@@ -16,7 +16,7 @@
  * meaningfully, so the order is reproduced.
  */
 
-import { AnalysisResult, analyzeImage, ROI_SIZE } from "./analysis";
+import { AnalysisResult, analyzeImage } from "./analysis";
 
 export type Priority = "edges" | "texture" | "mixed";
 export type Density = "low" | "medium" | "high";
@@ -40,13 +40,14 @@ const HEADER_BITS = 32; // up to 4 GB payload
 /** Build an ordering of pixel indices based on ROI + priority. */
 function pixelOrder(img: ImageData, analysis: AnalysisResult, priority: Priority): Uint32Array {
   const { width: w, height: h } = img;
-  const bw = w / ROI_SIZE;
-  const bh = h / ROI_SIZE;
+  const N = analysis.roi.length;
+  const bw = w / N;
+  const bh = h / N;
 
   // Score each block; deterministic tiebreak by index.
   const blocks: { score: number; bx: number; by: number }[] = [];
-  for (let by = 0; by < ROI_SIZE; by++) {
-    for (let bx = 0; bx < ROI_SIZE; bx++) {
+  for (let by = 0; by < N; by++) {
+    for (let bx = 0; bx < N; bx++) {
       let s = analysis.roi[by][bx];
       // Priority-based reweighting (deterministic, so decoder reproduces it)
       if (priority === "edges") s = s * 1.0; // edges already dominate

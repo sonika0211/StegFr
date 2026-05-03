@@ -27,12 +27,13 @@ const ROI_GRID = 32;
 
 /** Replace the heuristic ROI in an existing AnalysisResult with a CNN-predicted one. */
 export function withRoi(base: AnalysisResult, roi: number[][]): AnalysisResult {
-  // recompute capacity using the new ROI
+  // recompute capacity using the new ROI (supports any NxN grid)
+  const N = roi.length;
   const flat = roi.flat().sort((a, b) => b - a);
   const cutoff = flat[Math.floor(flat.length * 0.5)] || 0;
   let usableBlocks = 0;
-  for (let y = 0; y < ROI_GRID; y++) for (let x = 0; x < ROI_GRID; x++) if (roi[y][x] >= cutoff) usableBlocks++;
-  const pixelsPerBlock = (base.width / ROI_GRID) * (base.height / ROI_GRID);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (roi[y][x] >= cutoff) usableBlocks++;
+  const pixelsPerBlock = (base.width / N) * (base.height / N);
   const capacityBits = Math.floor(usableBlocks * pixelsPerBlock * 3);
   return { ...base, roi, capacityBits };
 }
