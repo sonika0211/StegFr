@@ -99,6 +99,10 @@ export function EncryptTab() {
       setAnalysis(a);
       setCnnConfidence(conf);
     }
+    if (a.verdict === "REJECTED") {
+      toast.error("Image rejected — choose a more textured carrier");
+      return;
+    }
     setEmbedding(true);
     try {
       const payload = await encryptMessage(message, password);
