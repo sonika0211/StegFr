@@ -174,7 +174,11 @@ export function analyzeImage(img: ImageData): AnalysisResult {
   if (avgBlockVariance < 50) reasons.push(`Average block variance ${avgBlockVariance.toFixed(1)} < 50 — flat regions dominate.`);
 
   let verdict: AnalysisResult["verdict"] = "ACCEPTED";
-  if (reasons.length > 0) {
+  // Hard reject: image is essentially flat / blank / single-colour.
+  if (lapVar < 5 || avgBlockVariance < 5 || edgePct < 0.2) {
+    verdict = "REJECTED";
+    reasons.push("Image is flat / single-colour — unsuitable for steganography.");
+  } else if (reasons.length > 0) {
     verdict = "WARNING";
     reasons.push("Image is not ideal — proceed with caution. Quality may be lower.");
   } else if (lapVar < 400 || edgePct < 6 || avgBlockVariance < 150) {
