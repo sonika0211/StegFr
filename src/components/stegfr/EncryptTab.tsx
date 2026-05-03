@@ -75,7 +75,8 @@ export function EncryptTab() {
       const merged = withRoi(base, cnn.roi);
       setAnalysis(merged);
       setCnnConfidence(cnn.confidence);
-      if (merged.verdict === "WARNING") toast.warning("Proceed with caution — image is not ideal");
+      if (merged.verdict === "REJECTED") toast.error("Image rejected — unsuitable carrier");
+      else if (merged.verdict === "WARNING") toast.warning("Proceed with caution — image is not ideal");
       else toast.success("Image accepted as a strong carrier");
     } catch (e) {
       toast.error("Analysis failed: " + (e as Error).message);
@@ -97,6 +98,10 @@ export function EncryptTab() {
       conf = cnn.confidence;
       setAnalysis(a);
       setCnnConfidence(conf);
+    }
+    if (a.verdict === "REJECTED") {
+      toast.error("Image rejected — choose a more textured carrier");
+      return;
     }
     setEmbedding(true);
     try {
@@ -243,7 +248,7 @@ export function EncryptTab() {
 
           {analysis ? (
             <>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 <MetricCard
                   label="Texture"
                   value={analysis.textureScore.toFixed(0)}
