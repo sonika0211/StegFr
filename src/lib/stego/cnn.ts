@@ -68,11 +68,12 @@ function buildModel(): tf.LayersModel {
   const t_k2 = tf.tensor4d(k2, [3, 3, 8, 8]);
   const t_b2 = tf.zeros([8]);
 
-  // Layer 3: 1x1 conv → sigmoid
+  // Layer 3: 1x1 conv → ReLU (linear-ish feature head, NOT sigmoid).
+  // CNN is a FEATURE EXTRACTOR — fusion + calibration happen downstream.
   const k3 = new Float32Array(1 * 1 * 8 * 1);
   for (let i = 0; i < 8; i++) k3[i] = 0.7;
   const t_k3 = tf.tensor4d(k3, [1, 1, 8, 1]);
-  const t_b3 = tf.tensor1d([-1.6]);
+  const t_b3 = tf.tensor1d([0]);
 
   const input = tf.input({ shape: [SIZE, SIZE, 4] });
   const c1 = tf.layers
@@ -82,7 +83,7 @@ function buildModel(): tf.LayersModel {
     .conv2d({ filters: 8, kernelSize: 3, padding: "same", activation: "relu", weights: [t_k2, t_b2] })
     .apply(c1) as tf.SymbolicTensor;
   const c3 = tf.layers
-    .conv2d({ filters: 1, kernelSize: 1, padding: "same", activation: "sigmoid", weights: [t_k3, t_b3] })
+    .conv2d({ filters: 1, kernelSize: 1, padding: "same", activation: "relu", weights: [t_k3, t_b3] })
     .apply(c2) as tf.SymbolicTensor;
 
   return tf.model({ inputs: input, outputs: c3 });
@@ -157,9 +158,9 @@ function extractFeatures(img: ImageData): Float32Array {
 /* ---------------- prediction ---------------- */
 
 export interface CnnRoiResult {
-  roi: number[][];          // SIZE x SIZE, normalized 0..1
+  roi: number[][];          // SIZE x SIZE, min-max normalized 0..1 LINEAR feature map
   meanActivation: number;
-  confidence: number;       // 0..100
+  confidence: number;       // 0..100  (spread of activations — more spread = more info)
 }
 
 export async function predictRoi(img: ImageData): Promise<CnnRoiResult> {
@@ -171,24 +172,28 @@ export async function predictRoi(img: ImageData): Promise<CnnRoiResult> {
     const out = model.predict(input) as tf.Tensor;
     const arr = out.dataSync();
 
-    let mean = 0, max = 0;
+    // Linear min-max normalization → 0..1 feature map.
+    // If the image is genuinely flat, max≈0 and the map stays black.
+    let mean = 0, max = 0, min = Infinity;
     for (let i = 0; i < arr.length; i++) {
       mean += arr[i];
       if (arr[i] > max) max = arr[i];
+      if (arr[i] < min) min = arr[i];
     }
     mean /= arr.length;
 
-    // Absolute scaling (NOT min-max). A flat image yields tiny activations
-    // everywhere → stays black. Only real edge/texture evidence lights up.
-    // sigmoid baseline ≈ 0.17 → subtract baseline, then scale.
-    const BASELINE = 0.17;
-    const SCALE = 2.2;
+    // Spread = signal-to-noise proxy. Flat images → tiny spread → low confidence.
+    const spread = max - min;
+    const ABS_FLOOR = 0.02;             // below this, treat the whole image as flat
+    const denom = Math.max(spread, ABS_FLOOR);
     const roi: number[][] = [];
     for (let y = 0; y < SIZE; y++) {
       const row: number[] = [];
       for (let x = 0; x < SIZE; x++) {
         const raw = arr[y * SIZE + x];
-        const v = Math.max(0, Math.min(1, (raw - BASELINE) * SCALE));
+        // If overall signal is below floor, output near-zero (flat → black).
+        const v = spread < ABS_FLOOR ? Math.min(1, raw / ABS_FLOOR) * 0.1
+                                     : Math.max(0, Math.min(1, (raw - min) / denom));
         row.push(v);
       }
       roi.push(row);
@@ -196,7 +201,7 @@ export async function predictRoi(img: ImageData): Promise<CnnRoiResult> {
     return {
       roi,
       meanActivation: mean,
-      confidence: Math.min(100, Math.max(0, mean * 160)),
+      confidence: Math.min(100, spread * 200),
     };
   });
 }

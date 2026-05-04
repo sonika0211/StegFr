@@ -19,7 +19,7 @@ import { predictRoi } from "@/lib/stego/cnn";
 import {
   chooseQAction,
   discretise,
-  rewardFromPsnr,
+  compositeReward,
   updateQ,
   QState,
   QAction,
@@ -123,11 +123,24 @@ export function EncryptTab() {
       setStegoUrl(imageDataToPngDataUrl(r.stego));
       setStegoBlob(await imageDataToPngBlob(r.stego));
 
-      // Reward from PSNR & persist Q-update
-      const reward = rewardFromPsnr(r.psnr);
+      // Composite reward — PSNR + capacity used − low-texture penalty.
+      const capacityUsed = a.capacityBits > 0
+        ? Math.min(1, r.bitsEmbedded / a.capacityBits)
+        : 0.5;
+      // smooth-region fraction from per-block variance feature (0..1, normalized)
+      let smooth = 0, total = 0;
+      for (const row of a.features.variance) for (const v of row) {
+        total++;
+        if (v < 0.2) smooth++;
+      }
+      const lowTextureFraction = total ? smooth / total : 0;
+      const reward = compositeReward({ psnr: r.psnr, capacityUsed, lowTextureFraction });
+
+      // next state — message length bin drops once embedded
+      const nextState: QState = { ...state, length: 0 };
       let qAfter = qChoice.qValue;
       try {
-        qAfter = await updateQ(state, qChoice.action, reward, qChoice.qValue);
+        qAfter = await updateQ(state, qChoice.action, reward, qChoice.qValue, nextState);
       } catch {
         /* offline / unauth — non-fatal */
       }
@@ -321,7 +334,7 @@ export function EncryptTab() {
                 <MetricCard label="PSNR" value={result.psnr.toFixed(2)} unit="dB" accent="cyan" big />
                 <MetricCard
                   label="RL Reward"
-                  value={qInfo ? (qInfo.reward >= 0 ? `+${qInfo.reward}` : qInfo.reward) : (result.rlReward >= 0 ? `+${result.rlReward}` : result.rlReward)}
+                  value={qInfo ? (qInfo.reward >= 0 ? `+${qInfo.reward.toFixed(2)}` : qInfo.reward.toFixed(2)) : (result.rlReward >= 0 ? `+${result.rlReward}` : result.rlReward)}
                   accent="magenta"
                   big
                 />
