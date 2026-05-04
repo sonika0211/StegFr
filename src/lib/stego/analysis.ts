@@ -289,16 +289,27 @@ export function analyzeImage(img: ImageData): AnalysisResult {
   const lm = lapMean / lapN;
   globalLapVar = (lapMeanSq / lapN - lm * lm) * 1000; // back into pixel-scale units
 
+  // Robust per-feature normalization (95th-percentile based, not min–max).
   const features: BlockFeatureMaps = {
-    variance: normalize(varRaw),
-    gradient: normalize(gradRaw),
-    entropy: normalize(entRaw),
-    highFreq: normalize(hfRaw),
-    intensity: intRaw, // already 0..1
+    variance: robustNormalize(varRaw),
+    gradient: robustNormalize(gradRaw),
+    entropy: robustNormalize(entRaw, 0.1),
+    highFreq: robustNormalize(hfRaw),
+    intensity: intRaw, // already 0..1, only used by Q-state heuristics
   };
 
-  const scoreMap = fuse(features); // no CNN yet
-  const roi = calibrateHeatmap(scoreMap);
+  // Low-signal suppression: compute a global high-frequency energy and
+  // gate the heatmap if the image is essentially flat.
+  let hfMean = 0;
+  for (const row of hfRaw) for (const v of row) hfMean += v;
+  hfMean /= (N * N);
+  const signalGate = hfMean < LOW_SIGNAL_FLOOR
+    ? Math.max(0, hfMean / LOW_SIGNAL_FLOOR) * 0.4
+    : 1;
+
+  const fused = fuse(features); // no CNN yet
+  const scoreMap = fused.map((r) => r.map((v) => v * signalGate));
+  const roi = smooth(scoreMap);
   const complexityScore = areaAwareGlobal(roi);
   const avgBlockVariance = avgVarSum / (N * N) * 65025; // back to 0..255² scale for legacy thresholds
   const edgeDensityPct = (edgePixels / totalPixels) * 100;
@@ -333,6 +344,8 @@ export function analyzeImage(img: ImageData): AnalysisResult {
     avgBlockVariance,
     roi, scoreMap, features,
     verdict, reasons, capacityBits,
+    // Stash the gate so withRoi() can re-apply it after CNN fusion.
+    ...({ _signalGate: signalGate } as any),
   };
 }
 
