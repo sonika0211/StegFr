@@ -334,7 +334,7 @@ export function EncryptTab() {
                 <MetricCard label="PSNR" value={result.psnr.toFixed(2)} unit="dB" accent="cyan" big />
                 <MetricCard
                   label="RL Reward"
-                  value={qInfo ? (qInfo.reward >= 0 ? `+${qInfo.reward}` : qInfo.reward) : (result.rlReward >= 0 ? `+${result.rlReward}` : result.rlReward)}
+                  value={qInfo ? (qInfo.reward >= 0 ? `+${qInfo.reward.toFixed(2)}` : qInfo.reward.toFixed(2)) : (result.rlReward >= 0 ? `+${result.rlReward}` : result.rlReward)}
                   accent="magenta"
                   big
                 />
