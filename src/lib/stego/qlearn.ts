@@ -82,8 +82,13 @@ export interface RewardContext {
 
 /** Composite reward: PSNR + capacity utilisation − smooth-region penalty. */
 export function compositeReward(ctx: RewardContext): number {
-  const psnrNorm = Math.max(-1, Math.min(1, (ctx.psnr - 45) / 15)); // 45dB→0, 60dB→+1, 30dB→-1
-  const w1 = 6, w2 = 1.5, w3 = 4;
+  // Asymmetric PSNR shaping — strongly punish PSNR < 40 dB, gently
+  // reward > 50 dB so the agent doesn't over-prioritise quality at the
+  // expense of using capacity.
+  const psnrNorm = ctx.psnr >= 45
+    ? Math.min(1, (ctx.psnr - 45) / 15)
+    : -Math.min(2, (45 - ctx.psnr) / 8); // sharp drop below 45 dB
+  const w1 = 6, w2 = 1.5, w3 = 6;        // smooth-region penalty bumped 4 → 6
   return w1 * psnrNorm + w2 * ctx.capacityUsed - w3 * ctx.lowTextureFraction;
 }
 

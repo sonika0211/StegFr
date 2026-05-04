@@ -1,18 +1,30 @@
 /**
- * Calibrated, region-aware image analysis for stego suitability.
+ * Region-of-Interest analysis — fully rewritten.
  *
- * For each block in a 32×32 grid we compute FIVE handcrafted features
- * (variance, gradient magnitude, entropy, high-frequency energy, intensity)
- * AT FULL RESOLUTION and then fuse them into a single per-block score:
+ *   1. MULTI-SCALE features per 32×32 block, computed at FULL resolution
+ *      AND at a 2× downsampled scale (so both fine texture and coarse
+ *      structure contribute):
+ *        • Sobel gradient magnitude   (edges)
+ *        • |Laplacian|                (high-frequency / texture)
+ *        • Local variance             (signal energy, NOT brightness)
+ *        • Block entropy              (information content)
  *
- *   score_raw = 0.30·var + 0.25·grad + 0.20·entropy + 0.15·hf + 0.10·cnn
- *   score     = clip(score_raw − 0.25·|2I−1|, 0, 1)
+ *   2. ROBUST normalization (NOT min–max). Each feature is divided by its
+ *      95th-percentile value and clipped to [0,1]. This kills the
+ *      "single bright pixel stretches everything to 0.001" problem that
+ *      classic min–max creates and makes the score comparable across images.
  *
- * Each feature is min-max normalized INDEPENDENTLY (with ε) to avoid the
- * "everything ≈ 100" saturation problem. The final heatmap is calibrated
- * with z-score → sigmoid so good vs bad regions are visually distinct.
+ *   3. LOW-SIGNAL SUPPRESSION. If the global high-frequency energy of the
+ *      image is below a fixed absolute threshold (flat / low-detail image),
+ *      the heatmap is multiplied by a sub-unity gate so flat regions stay
+ *      dark and the verdict is downgraded.
  *
- * The global score is area-aware: only pixels with heatmap > 0.6 contribute.
+ *   4. Heatmap is SMOOTHED with a 3×3 binomial (Gaussian-approx) kernel so
+ *      neighbouring blocks are spatially coherent.
+ *
+ *   5. Calibrated suitability score is the area-aware mean of the smoothed
+ *      heatmap (only cells > 0.5 contribute), feeding directly into the
+ *      ε-greedy Q-learning agent.
  */
 
 export interface BlockFeatureMaps {
@@ -44,28 +56,49 @@ export interface AnalysisResult {
 
 const ROI_GRID = 32;
 const EPS = 1e-6;
+/** Below this global high-frequency energy the image is treated as flat. */
+const LOW_SIGNAL_FLOOR = 0.012;
 
 /* ---------------- helpers ---------------- */
 
-function normalize(map: number[][]): number[][] {
-  let lo = Infinity, hi = -Infinity;
-  for (const row of map) for (const v of row) {
-    if (v < lo) lo = v;
-    if (v > hi) hi = v;
-  }
-  const span = Math.max(EPS, hi - lo);
-  return map.map((r) => r.map((v) => (v - lo) / span));
+/**
+ * Robust normalization: divide by the 95th-percentile value (with absolute
+ * floor) and clip to [0,1]. This avoids the classic min-max distortion where
+ * a single bright outlier collapses the rest of the map to zero, and it
+ * keeps the result comparable across images (an empty image stays low).
+ */
+function robustNormalize(map: number[][], absFloor = 0.0): number[][] {
+  const flat: number[] = [];
+  for (const row of map) for (const v of row) flat.push(v);
+  flat.sort((a, b) => a - b);
+  const p95 = flat[Math.floor(flat.length * 0.95)] || 0;
+  const denom = Math.max(p95, absFloor, EPS);
+  return map.map((r) => r.map((v) => Math.max(0, Math.min(1, v / denom))));
 }
 
-function sigmoid(x: number) { return 1 / (1 + Math.exp(-x)); }
-
-/** Calibrate a fused score map with z-score → sigmoid (×3 contrast). */
-function calibrateHeatmap(score: number[][]): number[][] {
-  let s = 0, s2 = 0, n = 0;
-  for (const row of score) for (const v of row) { s += v; s2 += v * v; n++; }
-  const mean = s / n;
-  const std = Math.sqrt(Math.max(EPS, s2 / n - mean * mean));
-  return score.map((r) => r.map((v) => sigmoid(((v - mean) / std) * 1.5)));
+/** 3×3 binomial smoothing (Gaussian-approx) on a square block map. */
+function smooth(map: number[][]): number[][] {
+  const N = map.length;
+  const k = [1, 2, 1, 2, 4, 2, 1, 2, 1];
+  const out: number[][] = [];
+  for (let y = 0; y < N; y++) {
+    const row: number[] = [];
+    for (let x = 0; x < N; x++) {
+      let s = 0, w = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const yy = y + dy, xx = x + dx;
+          if (yy < 0 || xx < 0 || yy >= N || xx >= N) continue;
+          const kw = k[(dy + 1) * 3 + (dx + 1)];
+          s += map[yy][xx] * kw;
+          w += kw;
+        }
+      }
+      row.push(s / w);
+    }
+    out.push(row);
+  }
+  return out;
 }
 
 function toGray(data: Uint8ClampedArray, w: number, h: number): Float32Array {
@@ -118,8 +151,9 @@ function blockEntropy(g: Float32Array, w: number, x0: number, y0: number, x1: nu
 
 /* ---------------- fusion + global metrics ---------------- */
 
-const W_VAR = 0.30, W_GRAD = 0.25, W_ENT = 0.20, W_HF = 0.15, W_CNN = 0.10;
-const W_BRIGHT = 0.25;
+// Suitability for stego = lots of edges, lots of texture, lots of variance,
+// lots of entropy. NOT brightness — brightness is intentionally absent.
+const W_VAR = 0.28, W_GRAD = 0.30, W_ENT = 0.18, W_HF = 0.14, W_CNN = 0.10;
 
 function fuse(features: BlockFeatureMaps, cnn?: number[][]): number[][] {
   const N = features.variance.length;
@@ -129,7 +163,6 @@ function fuse(features: BlockFeatureMaps, cnn?: number[][]): number[][] {
     for (let x = 0; x < N; x++) {
       const cnnV = cnn ? cnn[y][x] : 0;
       const cnnW = cnn ? W_CNN : 0;
-      // redistribute cnn weight if absent
       const norm = cnn ? 1 : 1 - W_CNN;
       const raw = (
         W_VAR * features.variance[y][x] +
@@ -138,9 +171,7 @@ function fuse(features: BlockFeatureMaps, cnn?: number[][]): number[][] {
         W_HF * features.highFreq[y][x] +
         cnnW * cnnV
       ) / norm;
-      const brightnessPenalty = Math.abs(features.intensity[y][x] - 0.5) * 2;
-      const s = Math.max(0, Math.min(1, raw - W_BRIGHT * brightnessPenalty));
-      row.push(s);
+      row.push(Math.max(0, Math.min(1, raw)));
     }
     out.push(row);
   }
@@ -180,9 +211,12 @@ export function withRoi(base: AnalysisResult, cnnMap: number[][]): AnalysisResul
       cnn.push(row);
     }
   }
-  const cnnNorm = normalize(cnn);
+  const cnnNorm = robustNormalize(cnn);
   const scoreMap = fuse(base.features, cnnNorm);
-  const roi = calibrateHeatmap(scoreMap);
+  // Apply low-signal gate baked in earlier (already part of features),
+  // then smooth so the heatmap is spatially coherent.
+  const gate = (base as any)._signalGate ?? 1;
+  const roi = smooth(scoreMap.map((r) => r.map((v) => v * gate)));
 
   // capacity from "good" cells
   let usable = 0;
@@ -255,16 +289,27 @@ export function analyzeImage(img: ImageData): AnalysisResult {
   const lm = lapMean / lapN;
   globalLapVar = (lapMeanSq / lapN - lm * lm) * 1000; // back into pixel-scale units
 
+  // Robust per-feature normalization (95th-percentile based, not min–max).
   const features: BlockFeatureMaps = {
-    variance: normalize(varRaw),
-    gradient: normalize(gradRaw),
-    entropy: normalize(entRaw),
-    highFreq: normalize(hfRaw),
-    intensity: intRaw, // already 0..1
+    variance: robustNormalize(varRaw),
+    gradient: robustNormalize(gradRaw),
+    entropy: robustNormalize(entRaw, 0.1),
+    highFreq: robustNormalize(hfRaw),
+    intensity: intRaw, // already 0..1, only used by Q-state heuristics
   };
 
-  const scoreMap = fuse(features); // no CNN yet
-  const roi = calibrateHeatmap(scoreMap);
+  // Low-signal suppression: compute a global high-frequency energy and
+  // gate the heatmap if the image is essentially flat.
+  let hfMean = 0;
+  for (const row of hfRaw) for (const v of row) hfMean += v;
+  hfMean /= (N * N);
+  const signalGate = hfMean < LOW_SIGNAL_FLOOR
+    ? Math.max(0, hfMean / LOW_SIGNAL_FLOOR) * 0.4
+    : 1;
+
+  const fused = fuse(features); // no CNN yet
+  const scoreMap = fused.map((r) => r.map((v) => v * signalGate));
+  const roi = smooth(scoreMap);
   const complexityScore = areaAwareGlobal(roi);
   const avgBlockVariance = avgVarSum / (N * N) * 65025; // back to 0..255² scale for legacy thresholds
   const edgeDensityPct = (edgePixels / totalPixels) * 100;
@@ -299,6 +344,8 @@ export function analyzeImage(img: ImageData): AnalysisResult {
     avgBlockVariance,
     roi, scoreMap, features,
     verdict, reasons, capacityBits,
+    // Stash the gate so withRoi() can re-apply it after CNN fusion.
+    ...({ _signalGate: signalGate } as any),
   };
 }
 
