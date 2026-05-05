@@ -61,7 +61,7 @@ export interface AnalysisResult {
 const ROI_GRID = 32;
 const EPS = 1e-6;
 /** Below this global high-frequency energy the image is treated as flat. */
-const LOW_SIGNAL_FLOOR = 0.012;
+const LOW_SIGNAL_FLOOR = 0.008;
 
 /* ---------------- helpers ---------------- */
 
