@@ -155,20 +155,19 @@ function blockEntropy(g: Float32Array, w: number, x0: number, y0: number, x1: nu
 
 /* ---------------- fusion + global metrics ---------------- */
 
-// Suitability for stego, driven by the five CNN-derived perceptual cues:
-//   • Texture Complexity   (highFreq / |Laplacian|)
-//   • Gradient Magnitude   (Sobel)
-//   • Local Variance       (block variance)
-//   • Intensity Spread     (max-min within block)
-//   • Pixel Decorrelation  (1 − |lag-1 autocorr|)
-// Brightness is intentionally absent. The CNN feature map is mixed in as a
-// small learned refinement on top of the five hand-crafted cues.
-const W_HF = 0.24;     // texture complexity
-const W_GRAD = 0.24;   // gradient magnitude (edges)
-const W_VAR = 0.18;    // local variance
-const W_SPREAD = 0.13; // intensity spread
-const W_DECOR = 0.13;  // pixel decorrelation
-const W_ENT = 0.04;    // entropy (small auxiliary signal)
+// Suitability for stego, driven by five canonical perceptual cues:
+//   • Texture Complexity        H  = −Σ p(i) log2 p(i)          (Shannon entropy)
+//   • Pixel Intensity Spread    σ  = sqrt( (1/N) Σ (x−μ)² )     (std deviation)
+//   • Pixel Correlation         r  = Σ(Pi−P̄)(Pi+1−P̄) / Σ(Pi−P̄)²  → use (1−|r|)
+//   • Gradient Magnitude        G  = sqrt(Gx² + Gy²)            (Sobel)
+//   • Local Variance            σ² = (1/K²) Σ (Iij − μ)²
+// Brightness is intentionally absent. The CNN map is mixed as a small refinement.
+const W_ENT = 0.22;    // texture complexity (entropy)
+const W_SPREAD = 0.18; // intensity spread (σ)
+const W_DECOR = 0.18;  // 1 − |Pearson lag-1 correlation|
+const W_GRAD = 0.20;   // gradient magnitude (Sobel)
+const W_VAR = 0.18;    // local variance (σ²)
+const W_HF = 0.00;     // |Laplacian| no longer in the headline mix
 const W_CNN = 0.04;    // CNN refinement (only when present)
 
 function fuse(features: BlockFeatureMaps, cnn?: number[][]): number[][] {
@@ -181,12 +180,12 @@ function fuse(features: BlockFeatureMaps, cnn?: number[][]): number[][] {
       const cnnW = cnn ? W_CNN : 0;
       const norm = cnn ? 1 : 1 - W_CNN;
       const raw = (
-        W_HF * features.highFreq[y][x] +
-        W_GRAD * features.gradient[y][x] +
-        W_VAR * features.variance[y][x] +
+        W_ENT * features.entropy[y][x] +
         W_SPREAD * features.spread[y][x] +
         W_DECOR * features.decorrelation[y][x] +
-        W_ENT * features.entropy[y][x] +
+        W_GRAD * features.gradient[y][x] +
+        W_VAR * features.variance[y][x] +
+        W_HF * features.highFreq[y][x] +
         cnnW * cnnV
       ) / norm;
       row.push(Math.max(0, Math.min(1, raw)));
@@ -282,7 +281,6 @@ export function analyzeImage(img: ImageData): AnalysisResult {
       const x1 = Math.min(w, Math.floor((bx + 1) * bw));
       const y1 = Math.min(h, Math.floor((by + 1) * bh));
       let sumI = 0, sumI2 = 0, sumG = 0, sumL = 0, n = 0;
-      let minI = Infinity, maxI = -Infinity;
       // Lag-1 autocorrelation accumulators (horizontal neighbours)
       let acN = 0, acSumXY = 0, acSumX = 0, acSumY = 0, acSumX2 = 0, acSumY2 = 0;
       for (let y = y0; y < y1; y++) {
@@ -290,8 +288,6 @@ export function analyzeImage(img: ImageData): AnalysisResult {
           const i = y * w + x;
           const I = g[i];
           sumI += I; sumI2 += I * I;
-          if (I < minI) minI = I;
-          if (I > maxI) maxI = I;
           sumG += grad[i];
           sumL += lap[i];
           n++;
@@ -312,7 +308,8 @@ export function analyzeImage(img: ImageData): AnalysisResult {
       hfRow.push(sumL / n);
       eRow.push(blockEntropy(g, w, x0, y0, x1, y1));
       iRow.push(meanI);
-      spRow.push(maxI - minI); // 0..1 raw spread
+      // Pixel Intensity Distribution: σ = sqrt( (1/N) Σ (x−μ)² )
+      spRow.push(Math.sqrt(Math.max(0, variance)));
       // Pearson lag-1 correlation; decor = 1 − |corr|. High decor → great carrier.
       let corr = 0;
       if (acN > 1) {
