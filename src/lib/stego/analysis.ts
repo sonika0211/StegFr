@@ -172,6 +172,9 @@ const W_CNN = 0.04;    // CNN refinement (only when present)
 
 function fuse(features: BlockFeatureMaps, cnn?: number[][]): number[][] {
   const N = features.variance.length;
+  const structureBoost =
+  features.gradient[y][x] * 0.6 +
+  features.decorrelation[y][x] * 0.4;
   const out: number[][] = [];
   for (let y = 0; y < N; y++) {
     const row: number[] = [];
@@ -188,7 +191,7 @@ function fuse(features: BlockFeatureMaps, cnn?: number[][]): number[][] {
         W_HF * features.highFreq[y][x] +
         cnnW * cnnV
       ) / norm;
-      row.push(Math.max(0, Math.min(1, raw)));
+      row.push(Math.min(1, raw + 0.15 * structureBoost));
     }
     out.push(row);
   }
@@ -347,7 +350,7 @@ export function analyzeImage(img: ImageData): AnalysisResult {
   for (const row of hfRaw) for (const v of row) hfMean += v;
   hfMean /= (N * N);
   const signalGate = hfMean < LOW_SIGNAL_FLOOR
-    ? Math.max(0, hfMean / LOW_SIGNAL_FLOOR) * 0.4
+    ? Math.max(0.3, hfMean / LOW_SIGNAL_FLOOR) 
     : 1;
 
   const fused = fuse(features); // no CNN yet
