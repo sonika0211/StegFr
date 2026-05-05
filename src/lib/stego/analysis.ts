@@ -33,6 +33,10 @@ export interface BlockFeatureMaps {
   entropy: number[][];
   highFreq: number[][];
   intensity: number[][];
+  /** Per-block intensity spread (max-min), normalized 0..1. Broad spread → good carrier. */
+  spread: number[][];
+  /** Per-block decorrelation score, 0..1 (1 = uncorrelated neighbours = good carrier). */
+  decorrelation: number[][];
 }
 
 export interface AnalysisResult {
@@ -151,9 +155,21 @@ function blockEntropy(g: Float32Array, w: number, x0: number, y0: number, x1: nu
 
 /* ---------------- fusion + global metrics ---------------- */
 
-// Suitability for stego = lots of edges, lots of texture, lots of variance,
-// lots of entropy. NOT brightness — brightness is intentionally absent.
-const W_VAR = 0.28, W_GRAD = 0.30, W_ENT = 0.18, W_HF = 0.14, W_CNN = 0.10;
+// Suitability for stego, driven by the five CNN-derived perceptual cues:
+//   • Texture Complexity   (highFreq / |Laplacian|)
+//   • Gradient Magnitude   (Sobel)
+//   • Local Variance       (block variance)
+//   • Intensity Spread     (max-min within block)
+//   • Pixel Decorrelation  (1 − |lag-1 autocorr|)
+// Brightness is intentionally absent. The CNN feature map is mixed in as a
+// small learned refinement on top of the five hand-crafted cues.
+const W_HF = 0.24;     // texture complexity
+const W_GRAD = 0.24;   // gradient magnitude (edges)
+const W_VAR = 0.18;    // local variance
+const W_SPREAD = 0.13; // intensity spread
+const W_DECOR = 0.13;  // pixel decorrelation
+const W_ENT = 0.04;    // entropy (small auxiliary signal)
+const W_CNN = 0.04;    // CNN refinement (only when present)
 
 function fuse(features: BlockFeatureMaps, cnn?: number[][]): number[][] {
   const N = features.variance.length;
@@ -165,10 +181,12 @@ function fuse(features: BlockFeatureMaps, cnn?: number[][]): number[][] {
       const cnnW = cnn ? W_CNN : 0;
       const norm = cnn ? 1 : 1 - W_CNN;
       const raw = (
-        W_VAR * features.variance[y][x] +
-        W_GRAD * features.gradient[y][x] +
-        W_ENT * features.entropy[y][x] +
         W_HF * features.highFreq[y][x] +
+        W_GRAD * features.gradient[y][x] +
+        W_VAR * features.variance[y][x] +
+        W_SPREAD * features.spread[y][x] +
+        W_DECOR * features.decorrelation[y][x] +
+        W_ENT * features.entropy[y][x] +
         cnnW * cnnV
       ) / norm;
       row.push(Math.max(0, Math.min(1, raw)));
