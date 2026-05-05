@@ -320,14 +320,15 @@ function gaussianBlur(map: Float32Array, w: number, h: number, sigma: number): F
 
 function p95Normalize(map: Float32Array): Float32Array {
   // sample (full sort can be expensive on huge images)
-  const stride = Math.max(1, Math.floor(map.length / 200000));
-  const sample: number[] = [];
-  for (let i = 0; i < map.length; i += stride) sample.push(map[i]);
-  sample.sort((a, b) => a - b);
-  const p95 = sample[Math.floor(sample.length * 0.95)] || 0;
-  const denom = Math.max(p95, 1e-3);
+   const sorted = Array.from(map).sort((a, b) => a - b);
+  const p50 = sorted[Math.floor(sorted.length * 0.5)];
+  const p90 = sorted[Math.floor(sorted.length * 0.9)];
+  const denom = Math.max(p90 - p50, 1e-3);
+
   const out = new Float32Array(map.length);
-  for (let i = 0; i < map.length; i++) out[i] = Math.min(1, Math.max(0, map[i] / denom));
+  for (let i = 0; i < map.length; i++) {
+    out[i] = Math.min(1, Math.max(0, (map[i] - p50) / denom));
+  }
   return out;
 }
 
@@ -419,7 +420,7 @@ export async function predictRoi(
   const ch2 = planeMean(planes.hfResid);
   const ch3 = planeMean(planes.chi);
   const ch4 = planeMean(planes.colorDecor);
-  const conf = (ch1 * 0.35 + ch2 * 0.25 + ch3 * 0.25 + ch4 * 0.15) * 100;
+  const conf = (ch1 * 0.20 + ch2 * 0.35 + ch3 * 0.10 + ch4 * 0.35) * 100;
 
   let mean = 0;
   for (let i = 0; i < normed.length; i++) mean += normed[i];
