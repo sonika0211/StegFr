@@ -281,7 +281,6 @@ export function analyzeImage(img: ImageData): AnalysisResult {
       const x1 = Math.min(w, Math.floor((bx + 1) * bw));
       const y1 = Math.min(h, Math.floor((by + 1) * bh));
       let sumI = 0, sumI2 = 0, sumG = 0, sumL = 0, n = 0;
-      let minI = Infinity, maxI = -Infinity;
       // Lag-1 autocorrelation accumulators (horizontal neighbours)
       let acN = 0, acSumXY = 0, acSumX = 0, acSumY = 0, acSumX2 = 0, acSumY2 = 0;
       for (let y = y0; y < y1; y++) {
@@ -289,8 +288,6 @@ export function analyzeImage(img: ImageData): AnalysisResult {
           const i = y * w + x;
           const I = g[i];
           sumI += I; sumI2 += I * I;
-          if (I < minI) minI = I;
-          if (I > maxI) maxI = I;
           sumG += grad[i];
           sumL += lap[i];
           n++;
@@ -311,7 +308,8 @@ export function analyzeImage(img: ImageData): AnalysisResult {
       hfRow.push(sumL / n);
       eRow.push(blockEntropy(g, w, x0, y0, x1, y1));
       iRow.push(meanI);
-      spRow.push(maxI - minI); // 0..1 raw spread
+      // Pixel Intensity Distribution: σ = sqrt( (1/N) Σ (x−μ)² )
+      spRow.push(Math.sqrt(Math.max(0, variance)));
       // Pearson lag-1 correlation; decor = 1 − |corr|. High decor → great carrier.
       let corr = 0;
       if (acN > 1) {
