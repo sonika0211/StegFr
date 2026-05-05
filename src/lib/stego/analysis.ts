@@ -33,6 +33,10 @@ export interface BlockFeatureMaps {
   entropy: number[][];
   highFreq: number[][];
   intensity: number[][];
+  /** Per-block intensity spread (max-min), normalized 0..1. Broad spread → good carrier. */
+  spread: number[][];
+  /** Per-block decorrelation score, 0..1 (1 = uncorrelated neighbours = good carrier). */
+  decorrelation: number[][];
 }
 
 export interface AnalysisResult {
@@ -151,9 +155,21 @@ function blockEntropy(g: Float32Array, w: number, x0: number, y0: number, x1: nu
 
 /* ---------------- fusion + global metrics ---------------- */
 
-// Suitability for stego = lots of edges, lots of texture, lots of variance,
-// lots of entropy. NOT brightness — brightness is intentionally absent.
-const W_VAR = 0.28, W_GRAD = 0.30, W_ENT = 0.18, W_HF = 0.14, W_CNN = 0.10;
+// Suitability for stego, driven by the five CNN-derived perceptual cues:
+//   • Texture Complexity   (highFreq / |Laplacian|)
+//   • Gradient Magnitude   (Sobel)
+//   • Local Variance       (block variance)
+//   • Intensity Spread     (max-min within block)
+//   • Pixel Decorrelation  (1 − |lag-1 autocorr|)
+// Brightness is intentionally absent. The CNN feature map is mixed in as a
+// small learned refinement on top of the five hand-crafted cues.
+const W_HF = 0.24;     // texture complexity
+const W_GRAD = 0.24;   // gradient magnitude (edges)
+const W_VAR = 0.18;    // local variance
+const W_SPREAD = 0.13; // intensity spread
+const W_DECOR = 0.13;  // pixel decorrelation
+const W_ENT = 0.04;    // entropy (small auxiliary signal)
+const W_CNN = 0.04;    // CNN refinement (only when present)
 
 function fuse(features: BlockFeatureMaps, cnn?: number[][]): number[][] {
   const N = features.variance.length;
@@ -165,10 +181,12 @@ function fuse(features: BlockFeatureMaps, cnn?: number[][]): number[][] {
       const cnnW = cnn ? W_CNN : 0;
       const norm = cnn ? 1 : 1 - W_CNN;
       const raw = (
-        W_VAR * features.variance[y][x] +
-        W_GRAD * features.gradient[y][x] +
-        W_ENT * features.entropy[y][x] +
         W_HF * features.highFreq[y][x] +
+        W_GRAD * features.gradient[y][x] +
+        W_VAR * features.variance[y][x] +
+        W_SPREAD * features.spread[y][x] +
+        W_DECOR * features.decorrelation[y][x] +
+        W_ENT * features.entropy[y][x] +
         cnnW * cnnV
       ) / norm;
       row.push(Math.max(0, Math.min(1, raw)));
@@ -238,7 +256,7 @@ export function analyzeImage(img: ImageData): AnalysisResult {
       width: w, height: h,
       textureScore: 0, laplacianVariance: 0, edgeDensityPct: 0, complexityScore: 0, avgBlockVariance: 0,
       roi: empty, scoreMap: empty,
-      features: { variance: empty, gradient: empty, entropy: empty, highFreq: empty, intensity: empty },
+      features: { variance: empty, gradient: empty, entropy: empty, highFreq: empty, intensity: empty, spread: empty, decorrelation: empty },
       verdict: "REJECTED", reasons: ["Image is too small (min 32×32)."], capacityBits: 0,
     };
   }
@@ -250,6 +268,7 @@ export function analyzeImage(img: ImageData): AnalysisResult {
   const N = ROI_GRID;
   const bw = w / N, bh = h / N;
   const varRaw: number[][] = [], gradRaw: number[][] = [], hfRaw: number[][] = [], entRaw: number[][] = [], intRaw: number[][] = [];
+  const spreadRaw: number[][] = [], decorRaw: number[][] = [];
 
   let globalLapVar = 0, lapMean = 0, lapMeanSq = 0, lapN = 0;
   let edgePixels = 0, totalPixels = 0;
@@ -257,22 +276,33 @@ export function analyzeImage(img: ImageData): AnalysisResult {
 
   for (let by = 0; by < N; by++) {
     const vRow: number[] = [], gRow: number[] = [], hfRow: number[] = [], eRow: number[] = [], iRow: number[] = [];
+    const spRow: number[] = [], dcRow: number[] = [];
     for (let bx = 0; bx < N; bx++) {
       const x0 = Math.floor(bx * bw), y0 = Math.floor(by * bh);
       const x1 = Math.min(w, Math.floor((bx + 1) * bw));
       const y1 = Math.min(h, Math.floor((by + 1) * bh));
       let sumI = 0, sumI2 = 0, sumG = 0, sumL = 0, n = 0;
+      let minI = Infinity, maxI = -Infinity;
+      // Lag-1 autocorrelation accumulators (horizontal neighbours)
+      let acN = 0, acSumXY = 0, acSumX = 0, acSumY = 0, acSumX2 = 0, acSumY2 = 0;
       for (let y = y0; y < y1; y++) {
         for (let x = x0; x < x1; x++) {
           const i = y * w + x;
           const I = g[i];
           sumI += I; sumI2 += I * I;
+          if (I < minI) minI = I;
+          if (I > maxI) maxI = I;
           sumG += grad[i];
           sumL += lap[i];
           n++;
           if (grad[i] > 0.25) edgePixels++;
           totalPixels++;
           lapMean += lap[i]; lapMeanSq += lap[i] * lap[i]; lapN++;
+          if (x + 1 < x1) {
+            const J = g[i + 1];
+            acSumXY += I * J; acSumX += I; acSumY += J;
+            acSumX2 += I * I; acSumY2 += J * J; acN++;
+          }
         }
       }
       const meanI = sumI / n;
@@ -282,9 +312,21 @@ export function analyzeImage(img: ImageData): AnalysisResult {
       hfRow.push(sumL / n);
       eRow.push(blockEntropy(g, w, x0, y0, x1, y1));
       iRow.push(meanI);
+      spRow.push(maxI - minI); // 0..1 raw spread
+      // Pearson lag-1 correlation; decor = 1 − |corr|. High decor → great carrier.
+      let corr = 0;
+      if (acN > 1) {
+        const mx = acSumX / acN, my = acSumY / acN;
+        const cov = acSumXY / acN - mx * my;
+        const sx = Math.sqrt(Math.max(0, acSumX2 / acN - mx * mx));
+        const sy = Math.sqrt(Math.max(0, acSumY2 / acN - my * my));
+        corr = sx * sy > EPS ? cov / (sx * sy) : 0;
+      }
+      dcRow.push(Math.max(0, Math.min(1, 1 - Math.abs(corr))));
       avgVarSum += variance;
     }
     varRaw.push(vRow); gradRaw.push(gRow); hfRaw.push(hfRow); entRaw.push(eRow); intRaw.push(iRow);
+    spreadRaw.push(spRow); decorRaw.push(dcRow);
   }
   const lm = lapMean / lapN;
   globalLapVar = (lapMeanSq / lapN - lm * lm) * 1000; // back into pixel-scale units
@@ -296,6 +338,9 @@ export function analyzeImage(img: ImageData): AnalysisResult {
     entropy: robustNormalize(entRaw, 0.1),
     highFreq: robustNormalize(hfRaw),
     intensity: intRaw, // already 0..1, only used by Q-state heuristics
+    spread: robustNormalize(spreadRaw, 0.05),
+    // Decorrelation already in 0..1 — no rescaling, just pass through.
+    decorrelation: decorRaw,
   };
 
   // Low-signal suppression: compute a global high-frequency energy and
