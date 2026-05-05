@@ -155,20 +155,19 @@ function blockEntropy(g: Float32Array, w: number, x0: number, y0: number, x1: nu
 
 /* ---------------- fusion + global metrics ---------------- */
 
-// Suitability for stego, driven by the five CNN-derived perceptual cues:
-//   • Texture Complexity   (highFreq / |Laplacian|)
-//   • Gradient Magnitude   (Sobel)
-//   • Local Variance       (block variance)
-//   • Intensity Spread     (max-min within block)
-//   • Pixel Decorrelation  (1 − |lag-1 autocorr|)
-// Brightness is intentionally absent. The CNN feature map is mixed in as a
-// small learned refinement on top of the five hand-crafted cues.
-const W_HF = 0.24;     // texture complexity
-const W_GRAD = 0.24;   // gradient magnitude (edges)
-const W_VAR = 0.18;    // local variance
-const W_SPREAD = 0.13; // intensity spread
-const W_DECOR = 0.13;  // pixel decorrelation
-const W_ENT = 0.04;    // entropy (small auxiliary signal)
+// Suitability for stego, driven by five canonical perceptual cues:
+//   • Texture Complexity        H  = −Σ p(i) log2 p(i)          (Shannon entropy)
+//   • Pixel Intensity Spread    σ  = sqrt( (1/N) Σ (x−μ)² )     (std deviation)
+//   • Pixel Correlation         r  = Σ(Pi−P̄)(Pi+1−P̄) / Σ(Pi−P̄)²  → use (1−|r|)
+//   • Gradient Magnitude        G  = sqrt(Gx² + Gy²)            (Sobel)
+//   • Local Variance            σ² = (1/K²) Σ (Iij − μ)²
+// Brightness is intentionally absent. The CNN map is mixed as a small refinement.
+const W_ENT = 0.22;    // texture complexity (entropy)
+const W_SPREAD = 0.18; // intensity spread (σ)
+const W_DECOR = 0.18;  // 1 − |Pearson lag-1 correlation|
+const W_GRAD = 0.20;   // gradient magnitude (Sobel)
+const W_VAR = 0.18;    // local variance (σ²)
+const W_HF = 0.00;     // |Laplacian| no longer in the headline mix
 const W_CNN = 0.04;    // CNN refinement (only when present)
 
 function fuse(features: BlockFeatureMaps, cnn?: number[][]): number[][] {
@@ -181,12 +180,12 @@ function fuse(features: BlockFeatureMaps, cnn?: number[][]): number[][] {
       const cnnW = cnn ? W_CNN : 0;
       const norm = cnn ? 1 : 1 - W_CNN;
       const raw = (
-        W_HF * features.highFreq[y][x] +
-        W_GRAD * features.gradient[y][x] +
-        W_VAR * features.variance[y][x] +
+        W_ENT * features.entropy[y][x] +
         W_SPREAD * features.spread[y][x] +
         W_DECOR * features.decorrelation[y][x] +
-        W_ENT * features.entropy[y][x] +
+        W_GRAD * features.gradient[y][x] +
+        W_VAR * features.variance[y][x] +
+        W_HF * features.highFreq[y][x] +
         cnnW * cnnV
       ) / norm;
       row.push(Math.max(0, Math.min(1, raw)));
