@@ -162,12 +162,12 @@ function blockEntropy(g: Float32Array, w: number, x0: number, y0: number, x1: nu
 //   • Gradient Magnitude        G  = sqrt(Gx² + Gy²)            (Sobel)
 //   • Local Variance            σ² = (1/K²) Σ (Iij − μ)²
 // Brightness is intentionally absent. The CNN map is mixed as a small refinement.
-const W_ENT = 0.22;    // texture complexity (entropy)
-const W_SPREAD = 0.18; // intensity spread (σ)
-const W_DECOR = 0.18;  // 1 − |Pearson lag-1 correlation|
-const W_GRAD = 0.20;   // gradient magnitude (Sobel)
-const W_VAR = 0.18;    // local variance (σ²)
-const W_HF = 0.00;     // |Laplacian| no longer in the headline mix
+const W_ENT = 0.18;    // texture complexity (entropy)
+const W_SPREAD = 0.16; // intensity spread (σ)
+const W_DECOR = 0.16;  // 1 − |Pearson lag-1 correlation|
+const W_GRAD = 0.26;   // gradient magnitude (Sobel)
+const W_VAR = 0.16;    // local variance (σ²)
+const W_HF = 0.08;     // |Laplacian| no longer in the headline mix
 const W_CNN = 0.04;    // CNN refinement (only when present)
 
 function fuse(features: BlockFeatureMaps, cnn?: number[][]): number[][] {
@@ -200,7 +200,8 @@ function areaAwareGlobal(heatmap: number[][]): number {
   let sum = 0, n = 0;
   for (const row of heatmap) for (const v of row) {
     n++;
-    if (v > 0.6) sum += v;
+    if (v > 0.4) sum += v*0.8;
+    if (v > 0.6) sum += v*1.2;
   }
   return (sum / n) * 100; // 0..100
 }
