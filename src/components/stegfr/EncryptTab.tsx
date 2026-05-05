@@ -38,6 +38,7 @@ export function EncryptTab() {
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [cnnConfidence, setCnnConfidence] = useState<number | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
+  const [analyzeProgress, setAnalyzeProgress] = useState(0);
   const [embedding, setEmbedding] = useState(false);
   const [result, setResult] = useState<EmbedResult | null>(null);
   const [qInfo, setQInfo] = useState<{ qBefore: number; qAfter: number; reward: number; explored: boolean } | null>(null);
@@ -69,10 +70,27 @@ export function EncryptTab() {
       return;
     }
     setAnalyzing(true);
+    setAnalyzeProgress(0);
     try {
       const base = analyzeImage(imgData);
-      const cnn = await predictRoi(imgData);
+      const cnn = await predictRoi(imgData, (p) => setAnalyzeProgress(p));
       const merged = withRoi(base, cnn.roi);
+      // Override headline metrics with CNN channel means (per spec).
+      const ch = cnn.channels;
+      merged.textureScore = Math.round(Math.min(100, ch.lsb * 100));
+      merged.edgeDensityPct = Math.min(100, ch.hf * 100);
+      merged.complexityScore = Math.min(100, ((ch.chi + ch.decor) / 2) * 100);
+      // Calibrated verdict from CNN confidence (POOR → GREAT).
+      if (cnn.confidence < 8) {
+        merged.verdict = "REJECTED";
+        merged.reasons = ["CNN confidence too low — image is unsuitable as a carrier."];
+      } else if (cnn.confidence > 40) {
+        merged.verdict = "WARNING";
+        merged.reasons = [
+          `CNN confidence ${cnn.confidence.toFixed(1)} — proceed with caution.`,
+          ...merged.reasons,
+        ];
+      }
       setAnalysis(merged);
       setCnnConfidence(cnn.confidence);
       if (merged.verdict === "REJECTED") toast.error("Image rejected — unsuitable carrier");
@@ -82,6 +100,7 @@ export function EncryptTab() {
       toast.error("Analysis failed: " + (e as Error).message);
     } finally {
       setAnalyzing(false);
+      setAnalyzeProgress(0);
     }
   };
 
@@ -95,6 +114,10 @@ export function EncryptTab() {
       const base = analyzeImage(imgData);
       const cnn = await predictRoi(imgData);
       a = withRoi(base, cnn.roi);
+      const ch = cnn.channels;
+      a.textureScore = Math.round(Math.min(100, ch.lsb * 100));
+      a.edgeDensityPct = Math.min(100, ch.hf * 100);
+      a.complexityScore = Math.min(100, ((ch.chi + ch.decor) / 2) * 100);
       conf = cnn.confidence;
       setAnalysis(a);
       setCnnConfidence(conf);
@@ -256,7 +279,7 @@ export function EncryptTab() {
 
           <ShinyButton onClick={onAnalyze} disabled={!imgData || analyzing} className="w-full">
             <Eye className="h-4 w-4" />
-            {analyzing ? "Analyzing…" : "Analyze Image"}
+            {analyzing ? `Analyzing… ${analyzeProgress}%` : "Analyze Image"}
           </ShinyButton>
 
           {analysis ? (
