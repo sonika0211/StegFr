@@ -172,16 +172,20 @@ const W_CNN = 0.04;    // CNN refinement (only when present)
 
 function fuse(features: BlockFeatureMaps, cnn?: number[][]): number[][] {
   const N = features.variance.length;
-  const structureBoost =
-  features.gradient[y][x] * 0.6 +
-  features.decorrelation[y][x] * 0.4;
   const out: number[][] = [];
+
   for (let y = 0; y < N; y++) {
     const row: number[] = [];
     for (let x = 0; x < N; x++) {
+
+      const structureBoost =
+        features.gradient[y][x] * 0.6 +
+        features.decorrelation[y][x] * 0.4;
+
       const cnnV = cnn ? cnn[y][x] : 0;
       const cnnW = cnn ? W_CNN : 0;
       const norm = cnn ? 1 : 1 - W_CNN;
+
       const raw = (
         W_ENT * features.entropy[y][x] +
         W_SPREAD * features.spread[y][x] +
@@ -191,10 +195,12 @@ function fuse(features: BlockFeatureMaps, cnn?: number[][]): number[][] {
         W_HF * features.highFreq[y][x] +
         cnnW * cnnV
       ) / norm;
+
       row.push(Math.min(1, raw + 0.15 * structureBoost));
     }
     out.push(row);
   }
+
   return out;
 }
 
