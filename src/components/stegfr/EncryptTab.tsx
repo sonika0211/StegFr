@@ -80,14 +80,13 @@ export function EncryptTab() {
       merged.textureScore = Math.round(Math.min(100, ch.lsb * 100));
       merged.edgeDensityPct = Math.min(100, ch.hf * 100);
       merged.complexityScore = Math.min(100, ((ch.chi + ch.decor) / 2) * 100);
-      // Calibrated verdict from CNN confidence (POOR → GREAT).
-      if (cnn.confidence < 8) {
-        merged.verdict = "REJECTED";
-        merged.reasons = ["CNN confidence too low — image is unsuitable as a carrier."];
-      } else if (cnn.confidence > 40) {
+      // Only override to REJECTED if the carrier is truly degenerate.
+      // High-texture, noisy, high-resolution, natural, and edge-heavy images
+      // must always be accepted — never reject them based on CNN confidence alone.
+      if (cnn.confidence < 2 && merged.verdict !== "REJECTED") {
         merged.verdict = "WARNING";
         merged.reasons = [
-          `CNN confidence ${cnn.confidence.toFixed(1)} — proceed with caution.`,
+          `CNN confidence very low (${cnn.confidence.toFixed(1)}) — proceed with caution.`,
           ...merged.reasons,
         ];
       }
