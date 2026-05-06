@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Download, KeyRound, MessageSquare, Search, Send, UserPlus } from "lucide-react";
+import { ArrowLeft, Download, KeyRound, MessageSquare, Search, Send, UserPlus } from "lucide-react";
 import GlowCard from "./GlowCard";
 import ShinyButton from "./ShinyButton";
 import { useAuth } from "@/hooks/useAuth";
@@ -245,9 +245,9 @@ export default function ChatTab({ onDecryptImage }: ChatTabProps = {}) {
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[320px_1fr]">
-      {/* SIDEBAR */}
-      <GlowCard>
-        <div className="flex h-[600px] flex-col p-4">
+      {/* SIDEBAR — hidden on mobile when a chat is open */}
+      <GlowCard className={cn(activeId ? "hidden lg:block" : "block")}>
+        <div className="flex h-[70vh] max-h-[600px] min-h-[420px] flex-col p-4 lg:h-[600px]">
           <header className="mb-3 flex items-center gap-2 text-primary">
             <MessageSquare className="h-4 w-4" />
             <h2 className="font-display text-sm uppercase tracking-[0.25em]">Chats</h2>
@@ -320,12 +320,20 @@ export default function ChatTab({ onDecryptImage }: ChatTabProps = {}) {
         </div>
       </GlowCard>
 
-      {/* MESSAGES */}
-      <GlowCard>
-        <div className="flex h-[600px] flex-col">
+      {/* MESSAGES — hidden on mobile until a chat is selected */}
+      <GlowCard className={cn(activeId ? "block" : "hidden lg:block")}>
+        <div className="flex h-[70vh] max-h-[600px] min-h-[420px] flex-col lg:h-[600px]">
           <header className="border-b border-border/40 p-4">
             {active ? (
               <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setActiveId(null)}
+                  className="lg:hidden -ml-1 mr-1 rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+                  aria-label="Back to chats"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </button>
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-primary text-sm font-bold text-primary-foreground">
                   {active.peer?.username?.[0]?.toUpperCase() ?? "?"}
                 </div>
