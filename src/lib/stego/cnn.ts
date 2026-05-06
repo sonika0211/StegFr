@@ -232,57 +232,43 @@ function buildFeaturePlanes(img: ImageData): FeaturePlanes {
   return { w, h, gray, lsbVar, hfResid, chi, colorDecor };
 }
 
-/* ---------------- tiling + Hanning ---------------- */
+/* ---------------- whole-image packing + downscale ---------------- */
 
-function hanning2d(n: number): Float32Array {
-  const w1 = new Float32Array(n);
-  for (let i = 0; i < n; i++) {
-    w1[i] = 0.5 * (1 - Math.cos((2 * Math.PI * i) / (n - 1)));
-  }
-  const w2 = new Float32Array(n * n);
-  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) w2[y * n + x] = Math.max(1e-3, w1[y] * w1[x]);
-  return w2;
-}
-const HANN = hanning2d(TILE);
-
-interface TileSpec { x0: number; y0: number }
-
-function planTiles(w: number, h: number): TileSpec[] {
-  const tiles: TileSpec[] = [];
-  const xs: number[] = [], ys: number[] = [];
-  if (w <= TILE) xs.push(0);
-  else {
-    for (let x = 0; x + TILE <= w; x += STRIDE) xs.push(x);
-    if (xs[xs.length - 1] + TILE < w) xs.push(w - TILE);
-  }
-  if (h <= TILE) ys.push(0);
-  else {
-    for (let y = 0; y + TILE <= h; y += STRIDE) ys.push(y);
-    if (ys[ys.length - 1] + TILE < h) ys.push(h - TILE);
-  }
-  for (const y of ys) for (const x of xs) tiles.push({ x0: x, y0: y });
-  return tiles;
-}
-
-function fillTileBatch(planes: FeaturePlanes, specs: TileSpec[]): Float32Array {
-  // [B, TILE, TILE, 5]
-  const buf = new Float32Array(specs.length * TILE * TILE * 5);
+/** Pack the 5 feature planes into a single [1, h, w, 5] NHWC buffer. */
+function packPlanes(planes: FeaturePlanes): Float32Array {
   const { w, h, gray, lsbVar, hfResid, chi, colorDecor } = planes;
   const channels = [gray, lsbVar, hfResid, chi, colorDecor];
-  for (let s = 0; s < specs.length; s++) {
-    const { x0, y0 } = specs[s];
-    const base = s * TILE * TILE * 5;
-    for (let y = 0; y < TILE; y++) {
-      const sy = Math.min(h - 1, Math.max(0, y0 + y));
-      for (let x = 0; x < TILE; x++) {
-        const sx = Math.min(w - 1, Math.max(0, x0 + x));
-        const off = base + (y * TILE + x) * 5;
-        const srcIdx = sy * w + sx;
-        for (let c = 0; c < 5; c++) buf[off + c] = channels[c][srcIdx];
-      }
+  const buf = new Float32Array(w * h * 5);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const src = y * w + x;
+      const off = (y * w + x) * 5;
+      for (let c = 0; c < 5; c++) buf[off + c] = channels[c][src];
     }
   }
   return buf;
+}
+
+/** Bilinearly resample a single-channel float plane to (dstW, dstH). */
+function resizePlane(src: Float32Array, sw: number, sh: number, dw: number, dh: number): Float32Array {
+  const out = new Float32Array(dw * dh);
+  const sx = sw / dw, sy = sh / dh;
+  for (let y = 0; y < dh; y++) {
+    const fy = (y + 0.5) * sy - 0.5;
+    const y0 = Math.max(0, Math.floor(fy));
+    const y1 = Math.min(sh - 1, y0 + 1);
+    const wy = fy - y0;
+    for (let x = 0; x < dw; x++) {
+      const fx = (x + 0.5) * sx - 0.5;
+      const x0 = Math.max(0, Math.floor(fx));
+      const x1 = Math.min(sw - 1, x0 + 1);
+      const wx = fx - x0;
+      const a = src[y0 * sw + x0], b = src[y0 * sw + x1];
+      const c = src[y1 * sw + x0], d = src[y1 * sw + x1];
+      out[y * dw + x] = (a * (1 - wx) + b * wx) * (1 - wy) + (c * (1 - wx) + d * wx) * wy;
+    }
+  }
+  return out;
 }
 
 /* ---------------- post-processing ---------------- */
