@@ -28,10 +28,12 @@
 
 import * as tf from "@tensorflow/tfjs";
 
-const TILE = 128;
-const STRIDE = 64;
-const BATCH = 4;
 const ROI_OUT = 64; // canvas display grid
+// Cap the longest side of the image fed to the CNN so very large images
+// don't blow up WebGL memory. The CNN is fully convolutional so it still
+// processes the entire image (just at a slightly reduced resolution when
+// the original is huge).
+const MAX_SIDE = 1024;
 
 let _model: tf.LayersModel | null = null;
 
@@ -73,7 +75,9 @@ function buildModel(): tf.LayersModel {
   const w4 = tf.tensor4d(w4arr, [1, 1, 8, 1]);
   const b4 = tf.tensor1d([-0.2]);
 
-  const input = tf.input({ shape: [TILE, TILE, 5] });
+  // Fully-convolutional input — accepts ANY spatial size so we can run
+  // the network on the whole image in a single pass.
+  const input = tf.input({ shape: [null, null, 5] });
   const c1 = tf.layers.conv2d({ filters: 16, kernelSize: 3, padding: "same", activation: "relu", weights: [w1, b1] }).apply(input) as tf.SymbolicTensor;
   const c2 = tf.layers.conv2d({ filters: 16, kernelSize: 3, padding: "same", activation: "relu", weights: [w2, b2] }).apply(c1) as tf.SymbolicTensor;
   const c3 = tf.layers.conv2d({ filters: 8, kernelSize: 3, padding: "same", activation: "relu", weights: [w3, b3] }).apply(c2) as tf.SymbolicTensor;
