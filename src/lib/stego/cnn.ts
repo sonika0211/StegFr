@@ -360,49 +360,43 @@ export async function predictRoi(
 ): Promise<CnnRoiResult> {
   const model = await getCnnModel();
   const planes = buildFeaturePlanes(img);
-  const { w, h } = planes;
+  const fullW = planes.w, fullH = planes.h;
 
-  const tiles = planTiles(w, h);
-  const accum = new Float32Array(w * h);
-  const weights = new Float32Array(w * h);
+  // Downscale only when the image is huge so a single-pass CNN fits in WebGL.
+  const longest = Math.max(fullW, fullH);
+  const scale = longest > MAX_SIDE ? MAX_SIDE / longest : 1;
+  const w = Math.max(8, Math.round(fullW * scale));
+  const h = Math.max(8, Math.round(fullH * scale));
 
-  for (let i = 0; i < tiles.length; i += BATCH) {
-    const batch = tiles.slice(i, i + BATCH);
-    const buf = fillTileBatch(planes, batch);
-    const outArr = tf.tidy(() => {
-      const t = tf.tensor4d(buf, [batch.length, TILE, TILE, 5]);
-      const o = model.predict(t) as tf.Tensor;
-      return o.dataSync() as Float32Array;
-    }) as unknown as Float32Array;
-
-    for (let s = 0; s < batch.length; s++) {
-      const { x0, y0 } = batch[s];
-      const base = s * TILE * TILE;
-      for (let y = 0; y < TILE; y++) {
-        const ty = y0 + y;
-        if (ty < 0 || ty >= h) continue;
-        for (let x = 0; x < TILE; x++) {
-          const tx = x0 + x;
-          if (tx < 0 || tx >= w) continue;
-          const wgt = HANN[y * TILE + x];
-          const v = outArr[base + y * TILE + x];
-          const idx = ty * w + tx;
-          accum[idx] += v * wgt;
-          weights[idx] += wgt;
-        }
-      }
+  let inputBuf: Float32Array;
+  if (scale === 1) {
+    inputBuf = packPlanes(planes);
+  } else {
+    const g = resizePlane(planes.gray, fullW, fullH, w, h);
+    const l = resizePlane(planes.lsbVar, fullW, fullH, w, h);
+    const hf = resizePlane(planes.hfResid, fullW, fullH, w, h);
+    const ch = resizePlane(planes.chi, fullW, fullH, w, h);
+    const co = resizePlane(planes.colorDecor, fullW, fullH, w, h);
+    inputBuf = new Float32Array(w * h * 5);
+    for (let i = 0, j = 0; i < w * h; i++, j += 5) {
+      inputBuf[j] = g[i]; inputBuf[j + 1] = l[i]; inputBuf[j + 2] = hf[i];
+      inputBuf[j + 3] = ch[i]; inputBuf[j + 4] = co[i];
     }
-    onProgress?.(Math.min(100, Math.round(((i + batch.length) / tiles.length) * 100)));
-    // yield to UI
-    await new Promise((r) => setTimeout(r, 0));
   }
 
-  const stitched = new Float32Array(w * h);
-  for (let i = 0; i < stitched.length; i++) {
-    stitched[i] = weights[i] > 0 ? accum[i] / weights[i] : 0;
-  }
+  onProgress?.(15);
+  await new Promise((r) => setTimeout(r, 0));
 
-  const blurred = gaussianBlur(stitched, w, h, 1.5);
+  // Single fully-convolutional pass on the WHOLE image.
+  const outArr = tf.tidy(() => {
+    const t = tf.tensor4d(inputBuf, [1, h, w, 5]);
+    const o = model.predict(t) as tf.Tensor;
+    return o.dataSync() as Float32Array;
+  }) as unknown as Float32Array;
+  onProgress?.(75);
+  await new Promise((r) => setTimeout(r, 0));
+
+  const blurred = gaussianBlur(outArr, w, h, 1.5);
   const normed = p95Normalize(blurred);
   const roi = downsampleToGrid(normed, w, h, ROI_OUT);
 
@@ -416,6 +410,7 @@ export async function predictRoi(
   for (let i = 0; i < normed.length; i++) mean += normed[i];
   mean /= normed.length;
 
+  onProgress?.(100);
   return {
     roi,
     meanActivation: mean,
