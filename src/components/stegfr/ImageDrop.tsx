@@ -55,7 +55,7 @@ export function ImageDrop({ onImage, previewUrl, onClear, label = "Drop image he
       <input
         ref={inputRef}
         type="file"
-        accept="image/png,image/jpeg,image/webp,image/bmp"
+        accept="image/*"
         className="hidden"
         onChange={(e) => {
           const f = e.target.files?.[0];
@@ -87,7 +87,7 @@ export function ImageDrop({ onImage, previewUrl, onClear, label = "Drop image he
         <div className="flex flex-col items-center gap-2 py-6 text-muted-foreground">
           <ImagePlus className="h-8 w-8 text-primary" />
           <p className="text-sm font-medium text-foreground">{label}</p>
-          <p className="text-xs">PNG · JPG · WebP · BMP</p>
+          <p className="text-xs">PNG · JPG · WebP · BMP · GIF · AVIF</p>
         </div>
       )}
     </div>
