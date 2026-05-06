@@ -28,10 +28,12 @@
 
 import * as tf from "@tensorflow/tfjs";
 
-const TILE = 128;
-const STRIDE = 64;
-const BATCH = 4;
 const ROI_OUT = 64; // canvas display grid
+// Cap the longest side of the image fed to the CNN so very large images
+// don't blow up WebGL memory. The CNN is fully convolutional so it still
+// processes the entire image (just at a slightly reduced resolution when
+// the original is huge).
+const MAX_SIDE = 1024;
 
 let _model: tf.LayersModel | null = null;
 
@@ -73,7 +75,9 @@ function buildModel(): tf.LayersModel {
   const w4 = tf.tensor4d(w4arr, [1, 1, 8, 1]);
   const b4 = tf.tensor1d([-0.2]);
 
-  const input = tf.input({ shape: [TILE, TILE, 5] });
+  // Fully-convolutional input — accepts ANY spatial size so we can run
+  // the network on the whole image in a single pass.
+  const input = tf.input({ shape: [null, null, 5] });
   const c1 = tf.layers.conv2d({ filters: 16, kernelSize: 3, padding: "same", activation: "relu", weights: [w1, b1] }).apply(input) as tf.SymbolicTensor;
   const c2 = tf.layers.conv2d({ filters: 16, kernelSize: 3, padding: "same", activation: "relu", weights: [w2, b2] }).apply(c1) as tf.SymbolicTensor;
   const c3 = tf.layers.conv2d({ filters: 8, kernelSize: 3, padding: "same", activation: "relu", weights: [w3, b3] }).apply(c2) as tf.SymbolicTensor;
@@ -228,57 +232,43 @@ function buildFeaturePlanes(img: ImageData): FeaturePlanes {
   return { w, h, gray, lsbVar, hfResid, chi, colorDecor };
 }
 
-/* ---------------- tiling + Hanning ---------------- */
+/* ---------------- whole-image packing + downscale ---------------- */
 
-function hanning2d(n: number): Float32Array {
-  const w1 = new Float32Array(n);
-  for (let i = 0; i < n; i++) {
-    w1[i] = 0.5 * (1 - Math.cos((2 * Math.PI * i) / (n - 1)));
-  }
-  const w2 = new Float32Array(n * n);
-  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) w2[y * n + x] = Math.max(1e-3, w1[y] * w1[x]);
-  return w2;
-}
-const HANN = hanning2d(TILE);
-
-interface TileSpec { x0: number; y0: number }
-
-function planTiles(w: number, h: number): TileSpec[] {
-  const tiles: TileSpec[] = [];
-  const xs: number[] = [], ys: number[] = [];
-  if (w <= TILE) xs.push(0);
-  else {
-    for (let x = 0; x + TILE <= w; x += STRIDE) xs.push(x);
-    if (xs[xs.length - 1] + TILE < w) xs.push(w - TILE);
-  }
-  if (h <= TILE) ys.push(0);
-  else {
-    for (let y = 0; y + TILE <= h; y += STRIDE) ys.push(y);
-    if (ys[ys.length - 1] + TILE < h) ys.push(h - TILE);
-  }
-  for (const y of ys) for (const x of xs) tiles.push({ x0: x, y0: y });
-  return tiles;
-}
-
-function fillTileBatch(planes: FeaturePlanes, specs: TileSpec[]): Float32Array {
-  // [B, TILE, TILE, 5]
-  const buf = new Float32Array(specs.length * TILE * TILE * 5);
+/** Pack the 5 feature planes into a single [1, h, w, 5] NHWC buffer. */
+function packPlanes(planes: FeaturePlanes): Float32Array {
   const { w, h, gray, lsbVar, hfResid, chi, colorDecor } = planes;
   const channels = [gray, lsbVar, hfResid, chi, colorDecor];
-  for (let s = 0; s < specs.length; s++) {
-    const { x0, y0 } = specs[s];
-    const base = s * TILE * TILE * 5;
-    for (let y = 0; y < TILE; y++) {
-      const sy = Math.min(h - 1, Math.max(0, y0 + y));
-      for (let x = 0; x < TILE; x++) {
-        const sx = Math.min(w - 1, Math.max(0, x0 + x));
-        const off = base + (y * TILE + x) * 5;
-        const srcIdx = sy * w + sx;
-        for (let c = 0; c < 5; c++) buf[off + c] = channels[c][srcIdx];
-      }
+  const buf = new Float32Array(w * h * 5);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const src = y * w + x;
+      const off = (y * w + x) * 5;
+      for (let c = 0; c < 5; c++) buf[off + c] = channels[c][src];
     }
   }
   return buf;
+}
+
+/** Bilinearly resample a single-channel float plane to (dstW, dstH). */
+function resizePlane(src: Float32Array, sw: number, sh: number, dw: number, dh: number): Float32Array {
+  const out = new Float32Array(dw * dh);
+  const sx = sw / dw, sy = sh / dh;
+  for (let y = 0; y < dh; y++) {
+    const fy = (y + 0.5) * sy - 0.5;
+    const y0 = Math.max(0, Math.floor(fy));
+    const y1 = Math.min(sh - 1, y0 + 1);
+    const wy = fy - y0;
+    for (let x = 0; x < dw; x++) {
+      const fx = (x + 0.5) * sx - 0.5;
+      const x0 = Math.max(0, Math.floor(fx));
+      const x1 = Math.min(sw - 1, x0 + 1);
+      const wx = fx - x0;
+      const a = src[y0 * sw + x0], b = src[y0 * sw + x1];
+      const c = src[y1 * sw + x0], d = src[y1 * sw + x1];
+      out[y * dw + x] = (a * (1 - wx) + b * wx) * (1 - wy) + (c * (1 - wx) + d * wx) * wy;
+    }
+  }
+  return out;
 }
 
 /* ---------------- post-processing ---------------- */
@@ -370,49 +360,43 @@ export async function predictRoi(
 ): Promise<CnnRoiResult> {
   const model = await getCnnModel();
   const planes = buildFeaturePlanes(img);
-  const { w, h } = planes;
+  const fullW = planes.w, fullH = planes.h;
 
-  const tiles = planTiles(w, h);
-  const accum = new Float32Array(w * h);
-  const weights = new Float32Array(w * h);
+  // Downscale only when the image is huge so a single-pass CNN fits in WebGL.
+  const longest = Math.max(fullW, fullH);
+  const scale = longest > MAX_SIDE ? MAX_SIDE / longest : 1;
+  const w = Math.max(8, Math.round(fullW * scale));
+  const h = Math.max(8, Math.round(fullH * scale));
 
-  for (let i = 0; i < tiles.length; i += BATCH) {
-    const batch = tiles.slice(i, i + BATCH);
-    const buf = fillTileBatch(planes, batch);
-    const outArr = tf.tidy(() => {
-      const t = tf.tensor4d(buf, [batch.length, TILE, TILE, 5]);
-      const o = model.predict(t) as tf.Tensor;
-      return o.dataSync() as Float32Array;
-    }) as unknown as Float32Array;
-
-    for (let s = 0; s < batch.length; s++) {
-      const { x0, y0 } = batch[s];
-      const base = s * TILE * TILE;
-      for (let y = 0; y < TILE; y++) {
-        const ty = y0 + y;
-        if (ty < 0 || ty >= h) continue;
-        for (let x = 0; x < TILE; x++) {
-          const tx = x0 + x;
-          if (tx < 0 || tx >= w) continue;
-          const wgt = HANN[y * TILE + x];
-          const v = outArr[base + y * TILE + x];
-          const idx = ty * w + tx;
-          accum[idx] += v * wgt;
-          weights[idx] += wgt;
-        }
-      }
+  let inputBuf: Float32Array;
+  if (scale === 1) {
+    inputBuf = packPlanes(planes);
+  } else {
+    const g = resizePlane(planes.gray, fullW, fullH, w, h);
+    const l = resizePlane(planes.lsbVar, fullW, fullH, w, h);
+    const hf = resizePlane(planes.hfResid, fullW, fullH, w, h);
+    const ch = resizePlane(planes.chi, fullW, fullH, w, h);
+    const co = resizePlane(planes.colorDecor, fullW, fullH, w, h);
+    inputBuf = new Float32Array(w * h * 5);
+    for (let i = 0, j = 0; i < w * h; i++, j += 5) {
+      inputBuf[j] = g[i]; inputBuf[j + 1] = l[i]; inputBuf[j + 2] = hf[i];
+      inputBuf[j + 3] = ch[i]; inputBuf[j + 4] = co[i];
     }
-    onProgress?.(Math.min(100, Math.round(((i + batch.length) / tiles.length) * 100)));
-    // yield to UI
-    await new Promise((r) => setTimeout(r, 0));
   }
 
-  const stitched = new Float32Array(w * h);
-  for (let i = 0; i < stitched.length; i++) {
-    stitched[i] = weights[i] > 0 ? accum[i] / weights[i] : 0;
-  }
+  onProgress?.(15);
+  await new Promise((r) => setTimeout(r, 0));
 
-  const blurred = gaussianBlur(stitched, w, h, 1.5);
+  // Single fully-convolutional pass on the WHOLE image.
+  const outArr = tf.tidy(() => {
+    const t = tf.tensor4d(inputBuf, [1, h, w, 5]);
+    const o = model.predict(t) as tf.Tensor;
+    return o.dataSync() as Float32Array;
+  }) as unknown as Float32Array;
+  onProgress?.(75);
+  await new Promise((r) => setTimeout(r, 0));
+
+  const blurred = gaussianBlur(outArr, w, h, 1.5);
   const normed = p95Normalize(blurred);
   const roi = downsampleToGrid(normed, w, h, ROI_OUT);
 
@@ -426,6 +410,7 @@ export async function predictRoi(
   for (let i = 0; i < normed.length; i++) mean += normed[i];
   mean /= normed.length;
 
+  onProgress?.(100);
   return {
     roi,
     meanActivation: mean,
