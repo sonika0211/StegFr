@@ -372,8 +372,15 @@ export function analyzeImage(img: ImageData): AnalysisResult {
   if (complexityScore < 8) reasons.push(`Few high-quality regions (${complexityScore.toFixed(1)}/100).`);
 
   let verdict: AnalysisResult["verdict"] = "ACCEPTED";
-  if (globalLapVar < 5 || edgeDensityPct < 0.2 || complexityScore < 1) {
+  // Only reject truly degenerate carriers (flat / single-colour synthetic images).
+  // High-texture, noisy, high-resolution, natural and edge-heavy images must always pass.
+  const degenerate =
+    globalLapVar < 1.5 &&
+    edgeDensityPct < 0.1 &&
+    complexityScore < 0.5;
+  if (degenerate) {
     verdict = "REJECTED";
+    reasons.length = 0;
     reasons.push("Image is flat / single-colour — unsuitable for steganography.");
   } else if (reasons.length > 0) {
     verdict = "WARNING";
