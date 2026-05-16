@@ -8,7 +8,7 @@
  *        • |Laplacian|                (high-frequency / texture)
  *        • Local variance             (signal energy, NOT brightness)
  *        • Block entropy              (information content)
- *
+ *..
  *   2. ROBUST normalization (NOT min–max). Each feature is divided by its
  *      95th-percentile value and clipped to [0,1]. This kills the
  *      "single bright pixel stretches everything to 0.001" problem that
