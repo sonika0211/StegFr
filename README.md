@@ -33,7 +33,7 @@ npm run dev
 
 * AES-128-CBC Encryption
 * HMAC-SHA256 Authentication
-* PBKDF2 Key Derivation (200,000 iterations)
+* PBKDF2 Key Derivation
 
 ## Note
 
