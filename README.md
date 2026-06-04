@@ -1,4 +1,4 @@
-````markdown
+
 # StegFr
 
 StegFr is an AI-assisted image steganography platform that securely hides encrypted messages inside images. It combines classical image analysis, a CNN-based suitability scorer, reinforcement learning optimization, and Fernet encryption to improve embedding quality while preserving image appearance.
@@ -23,12 +23,11 @@ StegFr is an AI-assisted image steganography platform that securely hides encryp
 
 ## Installation
 
-```bash
+
 git clone <repository-url>
 cd stegfr
 npm install
 npm run dev
-````
 
 ## Security
 
