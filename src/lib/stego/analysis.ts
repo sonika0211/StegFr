@@ -321,15 +321,21 @@ export function analyzeImage(img: ImageData): AnalysisResult {
       // Pixel Intensity Distribution: σ = sqrt( (1/N) Σ (x−μ)² )
       spRow.push(Math.sqrt(Math.max(0, variance)));
       // Pearson lag-1 correlation; decor = 1 − |corr|. High decor → great carrier.
-      let corr = 0;
+      // Flat block (no variation) → perfectly correlated, decorrelation = 0.
+      // Without this guard a solid-colour image yields 0/0 → corr=0 → decor=1,
+      // which falsely inflates the suitability score.
+      let decor = 0;
       if (acN > 1) {
         const mx = acSumX / acN, my = acSumY / acN;
         const cov = acSumXY / acN - mx * my;
         const sx = Math.sqrt(Math.max(0, acSumX2 / acN - mx * mx));
         const sy = Math.sqrt(Math.max(0, acSumY2 / acN - my * my));
-        corr = sx * sy > EPS ? cov / (sx * sy) : 0;
+        if (sx > 1e-4 && sy > 1e-4) {
+          const corr = cov / (sx * sy);
+          decor = Math.max(0, Math.min(1, 1 - Math.abs(corr)));
+        }
       }
-      dcRow.push(Math.max(0, Math.min(1, 1 - Math.abs(corr))));
+      dcRow.push(decor);
       avgVarSum += variance;
     }
     varRaw.push(vRow); gradRaw.push(gRow); hfRaw.push(hfRow); entRaw.push(eRow); intRaw.push(iRow);
