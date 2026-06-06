@@ -283,7 +283,7 @@ export function EncryptTab() {
 
           {analysis ? (
             <>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 <MetricCard
                   label="Texture"
                   value={analysis.textureScore.toFixed(0)}
@@ -295,12 +295,6 @@ export function EncryptTab() {
                   value={analysis.edgeDensityPct.toFixed(1)}
                   unit="%"
                   accent="magenta"
-                />
-                <MetricCard
-                  label="Complexity"
-                  value={analysis.complexityScore.toFixed(0)}
-                  unit="/100"
-                  accent="purple"
                 />
               </div>
 
