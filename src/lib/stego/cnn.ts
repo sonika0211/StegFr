@@ -170,7 +170,9 @@ function buildFeaturePlanes(img: ImageData): FeaturePlanes {
     hfResid[i] = Math.min(1, Math.abs(gray[i] - blur[i]) * 4);
   }
 
-  // ch3 — chi-square anomaly per 8×8 block (even vs odd value pairs of luma 0..255)
+  // ch3 — chi-square anomaly per 8×8 block (even vs odd value pairs of luma 0..255).
+  // Gate it by local luma variance so a perfectly solid colour does not look
+  // like a strong anomaly just because every pixel falls into one even/odd bin.
   const chi = new Float32Array(N);
   const B = 8;
   for (let by = 0; by < h; by += B) {
@@ -178,13 +180,20 @@ function buildFeaturePlanes(img: ImageData): FeaturePlanes {
       const x1 = Math.min(w, bx + B), y1 = Math.min(h, by + B);
       // 128 pairs (2k, 2k+1)
       const evens = new Uint16Array(128), odds = new Uint16Array(128);
+      let sumI = 0, sumI2 = 0, pxN = 0;
       for (let y = by; y < y1; y++) {
         for (let x = bx; x < x1; x++) {
-          const v = Math.round(gray[y * w + x] * 255);
+          const lum = gray[y * w + x];
+          sumI += lum;
+          sumI2 += lum * lum;
+          pxN++;
+          const v = Math.round(lum * 255);
           const k2 = v >> 1;
           if (v & 1) odds[k2]++; else evens[k2]++;
         }
       }
+      const meanI = sumI / pxN;
+      const lumaVar = Math.max(0, sumI2 / pxN - meanI * meanI);
       let chiSum = 0, terms = 0;
       for (let k2 = 0; k2 < 128; k2++) {
         const e = evens[k2], o = odds[k2];
@@ -196,7 +205,8 @@ function buildFeaturePlanes(img: ImageData): FeaturePlanes {
         terms++;
       }
       // normalize: mean per-bin chi clipped
-      const score = terms > 0 ? Math.min(1, (chiSum / terms) / 4) : 0;
+      const varianceGate = Math.min(1, lumaVar / 0.0025);
+      const score = terms > 0 ? Math.min(1, (chiSum / terms) / 4) * varianceGate : 0;
       for (let y = by; y < y1; y++) {
         for (let x = bx; x < x1; x++) chi[y * w + x] = score;
       }
